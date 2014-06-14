@@ -1,0 +1,1270 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta property="og:title" content="Burn, My Little Universe!">
+		<meta property="og:image" content="http://debug.tw/lab/proc_univ/thumbnail.jpg">
+		<meta property="og:description" content="Realtime Perlin noise-based procedural textures for various celestial objects. Implemented with WebGL and best viewed in Google Chrome web browser.">
+		<title>Burn, My Little Universe!</title>
+		<link href="http://fonts.googleapis.com/css?family=Open+Sans+Condensed:300" rel="stylesheet" type="text/css">
+		<link href="http://fonts.googleapis.com/css?family=Open+Sans:300" rel="stylesheet" type="text/css">
+		<style>
+			body {
+				background-color: black;
+				border: 0px;
+				margin: 0px;
+				overflow: hidden;
+			}
+			#controlTip {
+				color: white;
+				height: 100px;
+				left: 0%;
+				margin-left: -450px;
+				margin-top: -50px;
+				overflow: hidden;
+				position: absolute;
+				top: 50%;
+				visibility: hidden;
+				width: 550px;
+			}
+			.uiWindow {
+				background-color: white;
+				height: 100%;
+				opacity: 0.225;
+				position: absolute;
+				width: 100%;
+			}
+			.question {
+				font-family: "Verdana", sans-serif;
+				font-size: 50px;
+				margin-left: 450px;
+				padding-top: 20px;
+				pointer-events: none;
+				position: absolute;
+				text-align: center;
+				width: 100px;
+			}
+			.uiText {
+				border-right: 1px solid white;
+				font-family: "Open Sans", "Arial", sans-serif;
+				font-size: 15px;
+				height: 55px;
+				line-height: 20px;
+				margin: 15px 0px 15px 0px;
+				padding-right: 24px;
+				padding-top: 15px;
+				pointer-events: none;
+				text-align: right;
+				width: 425px;
+			}
+			#loadingTip {
+				color: #EEEEEE;
+				font-family: "Verdana", sans-serif;
+				font-size: 12px;
+				height: 32px;
+				left: 50%;
+				line-height: 16px;
+				margin-left: -50px;
+				margin-top: -16px;
+				position: absolute; 
+				text-align: center;
+				top: 50%;
+				width: 100px;
+			}
+			#nameTag {
+				color: white;
+				font-family: "Open Sans Condensed", "Verdana", sans-serif;
+				height: 220px;
+				left: 60%;
+				margin-top: -110px;
+				opacity: 0.85;
+				overflow: hidden;
+				pointer-events: none;
+				position: absolute;
+				top: 50%;
+				visibility: hidden;
+				width: 1000px;
+			}
+			.transformable {
+				transform-origin: left;
+				-ms-transform-origin: left;
+				-moz-transform-origin: left;
+				-o-transform-origin: left;
+				-webkit-transform-origin: left;
+			}
+			#nameTag_name {
+				font-size: 180px;
+				letter-spacing: -4px;
+				line-height: 180px;
+			}
+			#nameTag_subtitle {
+				font-size: 28px;
+				margin-left: 10px;
+			}
+			#copyright {
+				background: rgba(0, 0, 0, 0.5);
+				color: white;
+				font-family: "Open Sans", "Arial", sans-serif;
+				font-size: 12px;
+				line-height: 20px;
+				left: 50%;
+				margin-left: -75px;
+				margin-top: -45px;
+				position: absolute;
+				text-align: center;
+				top: 100%;
+				visibility: hidden;
+				width: 150px;
+			}
+			#copyright a {
+				color: white;
+				text-decoration: none;
+			}
+		</style>
+	</head>
+
+	<body>
+		<script src="dep/three-r54.js"></script>
+		<script src="dep/stats-r11.js"></script>
+		<script src="dep/Detector.js"></script>
+		<script src="dep/TrackballControls.js"></script>
+
+		<script id="vshader_space" type="x-shader/x-vertex">
+			attribute vec3	vertColor;
+			uniform float	u_radius;
+			uniform float	u_pointSize;
+			varying vec3	v_color;
+
+			void main(void) {
+				v_color = vertColor;
+
+				float phi = position.x;
+				float theta = position.y;
+				vec3 worldPos = u_radius * vec3(sin(theta) * cos(phi), sin(theta) * sin(phi), cos(theta));
+				gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(worldPos, 1.0);
+				gl_Position.z = 1.0;  // fixed depth to avoid being clipped
+				gl_PointSize = u_pointSize;
+			}
+		</script>
+
+		<script id="vshader_planet" type="x-shader/x-vertex">
+			uniform float	u_radius;
+			uniform mat4	u_transform;		// dynamic transform
+			varying vec3	v_modelPosition;	// model-space position
+			varying vec3	v_worldPosition;	// world-space position (normalized)
+			varying vec3	v_worldNormal;		// world-space normal (normalized)
+
+			void main(void) {
+				gl_Position = modelMatrix * u_transform * vec4(position, 1.0);
+				v_worldPosition = gl_Position.xyz / gl_Position.w;
+				gl_Position = projectionMatrix * viewMatrix * gl_Position;
+				v_modelPosition = position / u_radius;
+				v_worldNormal = normalize(modelMatrix * vec4(normal, 0.0)).xyz;
+			}
+		</script>
+		
+		<script id="fshader_space" type="x-shader/x-fragment">
+			varying vec3	v_color;
+
+			void main(void) {
+				vec3 outputRGB = v_color;
+				gl_FragColor = vec4(outputRGB, 1.0);
+			}
+		</script>
+
+		<script id="fshader_emissive" type="x-shader/x-fragment">
+			void main(void) {
+				vec3 outputRGB = DrawSurfaceColor(v_modelPosition);
+				gl_FragColor = vec4(outputRGB, 1.0);
+			}
+		</script>
+
+		<script id="fshader_nonemissive" type="x-shader/x-fragment">
+			void main(void) {
+				vec3 outputRGB = DrawSurfaceColor(v_modelPosition);
+				float kDiff = dot(v_worldNormal, -u_lightDir);  // diffusive coefficient
+				gl_FragColor = vec4(outputRGB * kDiff, 1.0);
+			}
+		</script>
+
+		<script id="fshader_atmosphere" type="x-shader/x-fragment">
+			uniform float	u_enableAtmos;
+			uniform vec3	u_atmosColor;
+			uniform vec3	u_lightDir;  // normalized expected
+			varying vec3	v_worldPosition;
+			varying vec3	v_worldNormal;
+
+			void main(void) {
+				if (u_enableAtmos >= 0.0) {
+					vec3 viewDir = normalize(cameraPosition - v_worldPosition);
+					float thickness = clamp(1.0 - dot(viewDir, v_worldNormal), 0.0, 1.0);
+					float enhancedThickness;
+					float threshold = 0.85;
+					if (thickness > threshold)
+						thickness = threshold - smoothstep(0.0, threshold, (thickness - threshold) / (1.0 - threshold));  // smooth near the edge
+					enhancedThickness = pow(thickness, 3.0);
+
+					// scattering effect
+					float brightness = dot(v_worldNormal, -u_lightDir);  // diffusive base brightness
+					brightness = smoothstep(-0.8, 1.0, brightness);
+
+					gl_FragColor.xyz = u_atmosColor * brightness * enhancedThickness;
+					gl_FragColor.w = pow(length(gl_FragColor.xyz), 0.5);
+				}
+				else {
+					discard;
+				}
+			}
+		</script>
+
+		<script id="fshader_noise" type="x-shader/x-fragment">
+			#define MAX_FBM_OCTAVE   8
+
+			uniform sampler2D	t_noisePerm;
+			uniform float		u_radius;
+			uniform vec3		u_lightDir;  // normalized expected
+			varying vec3		v_modelPosition;
+			varying vec3		v_worldPosition;
+			varying vec3		v_worldNormal;
+
+			float NoiseWeight(float t) {
+				return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);  // 6*t^5 - 15*t^4 + 10*t^3
+			}
+
+			vec3 SamplePerm(float x, float y, float z) {
+				float fx = mod(x, 256.0);
+				float fy = mod(y, 256.0);
+
+				float blockX = mod(z, 16.0) * 256.0;
+				float blockY = floor(z / 16.0) * 256.0;
+				vec2 index = vec2(blockX + fx, blockY + fy) + 0.5;
+
+				return (texture2D(t_noisePerm, index / 4096.0).rgb * 256.0 - 1.0);
+			}
+
+			float Gradient(vec3 index, vec3 delta) {
+				vec3 grad = SamplePerm(index.x, index.y, index.z);
+				return dot(grad, delta);
+			}
+
+			float PerlinNoise(vec3 p) {
+				p *= 6.0;  // some scaling
+
+				// compute noise cell coordinates and offsets
+				vec3 delta = fract(p);
+				vec3 index = mod(floor(p), 256.0);
+
+				float w000 = Gradient(index, delta);
+				float w100 = Gradient(index + vec3(1.0, 0.0, 0.0), delta - vec3(1.0, 0.0, 0.0));
+				float w010 = Gradient(index + vec3(0.0, 1.0, 0.0), delta - vec3(0.0, 1.0, 0.0));
+				float w110 = Gradient(index + vec3(1.0, 1.0, 0.0), delta - vec3(1.0, 1.0, 0.0));
+				float w001 = Gradient(index + vec3(0.0, 0.0, 1.0), delta - vec3(0.0, 0.0, 1.0));
+				float w101 = Gradient(index + vec3(1.0, 0.0, 1.0), delta - vec3(1.0, 0.0, 1.0));
+				float w011 = Gradient(index + vec3(0.0, 1.0, 1.0), delta - vec3(0.0, 1.0, 1.0));
+				float w111 = Gradient(index + vec3(1.0, 1.0, 1.0), delta - vec3(1.0, 1.0, 1.0));
+
+				// compute trilinear interpolation of weights
+				float wx = NoiseWeight(delta.x);
+				float wy = NoiseWeight(delta.y);
+				float wz = NoiseWeight(delta.z);
+				float x00 = mix(w000, w100, wx);
+				float x10 = mix(w010, w110, wx);
+				float x01 = mix(w001, w101, wx);
+				float x11 = mix(w011, w111, wx);
+				float y0 = mix(x00, x10, wy);
+				float y1 = mix(x01, x11, wy);
+				return mix(y0, y1, wz);
+			}
+
+			float FBM(vec3 v3Point, int nOctave) {
+				float sum = 0.0;
+				float weight = 1.0;
+				float scaler = 1.0;
+				for (int i = 0; i < MAX_FBM_OCTAVE; i++) {
+					if (i >= nOctave)
+						break;
+					sum += weight * PerlinNoise(scaler * v3Point);
+					weight *= 0.55;
+					scaler *= 2.0;
+				}
+				return sum;
+			}
+		</script>
+
+		<script id="fshader_sun" type="x-shader/x-fragment">
+			vec3 DrawSurfaceColor(vec3 position) {
+				float brightness = 0.25;  // greater for a brighter sun
+				float spotThreshold = 0.60;  // greater for fewer and smaller light spots
+				
+				float f = brightness + PerlinNoise(12.0 * position) / 3.0;  // base
+				float f2 = PerlinNoise(position);  // highly active areas (light spots)
+				if (f2 >= spotThreshold)
+					f += 6.0 * (f2 - spotThreshold);  // some scaling to emphasize the light intensity
+
+				f *= 1.0 + PerlinNoise(position) / 1.75;  // a very low frequency noise
+				return vec3(0.75 + f, 0.2 + f, f);
+			}
+		</script>
+
+		<script id="fshader_mercury" type="x-shader/x-fragment">
+			vec3 DrawSurfaceColor(vec3 position) {
+				float brightness = 0.3;  // greater for a brighter planet
+				vec3 displacement = vec3(54.38, 3.14, 1.68);  // a random displacement to fragment position
+		
+				float f = FBM(position, 8) / 4.0;
+				float f2 = FBM(position * 3.0 + displacement, 4);
+				float f3 = FBM(position + displacement, 4) / 6.0;
+				f = max(f, 0.0);
+				f2 = max(f2, 0.0);
+				f3 = max(f3, 0.0);
+				f = brightness + (f + 0.1) * (f2 + 0.5) + f3;
+				return vec3(f, f, f);
+			}
+		</script>
+
+		<script id="fshader_venus" type="x-shader/x-fragment">
+			vec3 DrawSurfaceColor(vec3 position) {
+				vec3 outputColor;
+
+				vec3 displacement = vec3(54.38, 3.14, 1.68);
+				vec3 base = vec3(0.71, 0.60, 0.39);  // base color
+				vec3 cloud1 = vec3(0.96, 0.93, 0.72);  // a cloud color
+				vec3 cloud2 = vec3(0.89, 0.82, 0.49);  // another cloud color
+				vec3 dark = vec3(0.48, 0.46, 0.37);  // dark cloud color
+		
+				// let y-component dominate while x- and z-component affect a little bit
+				vec3 pos = vec3(position.x / 3.0, position.y, position.z / 3.0);
+		
+				// base + first cloud color
+				float f = 0.3 + FBM(pos / 3.0, 4);
+				f = clamp((f + 1.0 / 2.0), 0.0, 1.0);  // re-scale to [0, 1]
+				outputColor = mix(cloud1, base, f);
+		
+				// second cloud color
+				f = 0.2 + FBM((pos + displacement) / 2.0, 4);
+				f = clamp((f + 1.0 / 2.0), 0.0, 1.0);  // re-scale to [0, 1]
+				outputColor = mix(cloud2, outputColor, f);
+		
+				// some shaded clouds
+				pos.y += FBM(position * 5.0, 2) / 150.0;
+				f = 0.45 + FBM(pos, 4) * PerlinNoise(position / 2.0);
+				f = clamp((f + 1.0 / 2.0), 0.0, 1.0);  // re-scale to [0, 1]
+				outputColor = mix(dark, outputColor, f);
+
+				return outputColor;
+			}
+		</script>
+
+		<script id="fshader_earth" type="x-shader/x-fragment">
+			vec3 DrawSurfaceColor(vec3 position) {
+				vec3 outputColor;
+
+				float waterLevel = 0.15;  // greater for lesser land
+				float cloudAmount = 0.1;  // greater for more and heavier clouds
+				vec3 land = vec3(0.0, 0.31, 0.0);  // land color
+				vec3 mountain = vec3(0.74, 0.67, 0.52);  // mountain color
+				vec3 snow = vec3(0.95, 0.95, 0.95);  // snow color
+				vec3 ocean = vec3(0.085, 0.085, 0.57);  // ocean color
+				vec3 cloudDisplacement = vec3(54.38, 3.14, 1.68);  // a random displacement to fragment position
+
+				// determine land or ocean
+				float f = FBM(position / 4.0, 8);
+				float specSharpness, specScale;
+				if (f > waterLevel) {
+					outputColor = mix(land, mountain, smoothstep(waterLevel, 1.0, f * 1.2));
+					if (f > 0.6)
+						outputColor = mix(outputColor, snow * 3.0, f - 0.6);
+					specSharpness = 15.0;
+					specScale = 0.4;
+				}
+				else {
+					outputColor = ocean;  
+					specSharpness = 45.0;
+					specScale = 0.7;
+				}
+
+				// specular term
+				vec3 viewDir = normalize(cameraPosition - v_worldPosition);
+				vec3 halfway = normalize(viewDir - u_lightDir);
+				float kSpec = pow(clamp(dot(halfway, v_worldNormal), 0.0, 1.0), specSharpness);  // specular term
+				outputColor += kSpec * specScale;
+
+				// cloud
+				float f2 = cloudAmount + FBM((position + cloudDisplacement) / 2.0, 8);
+				f2 = max(0.0, f2);
+				outputColor = mix(outputColor, vec3(1.0, 1.0, 1.0), f2);
+
+				return outputColor;
+			}
+		</script>
+
+		<script id="fshader_mars" type="x-shader/x-fragment">
+			vec3 DrawSurfaceColor(vec3 position) {
+				vec3 outputColor;
+
+				float cloudAmount = -0.25;  // greater for more and heavier clouds
+				vec3 displacement = vec3(31.41, 59.26, 50.6);  // a random displacement to fragment position
+				vec3 land = vec3(0.71, 0.38, 0.14);  // land color
+				vec3 dark = vec3(0.46, 0.20, 0.11);  // darker land color
+				vec3 cloud = vec3(1.0, 1.0, 1.0);  // cloud color
+
+				float f = -0.05 + FBM((position + displacement) / 10.0, 8);
+				float amp = 1.6;  // larger for more limited area to blend
+				outputColor = mix(dark, land, smoothstep(-0.1, 0.1, f * amp));  // lowland for f<-0.1; highland for f>0.1
+
+				// a low frequency noise
+				f = FBM(position, 2) / 25.0;
+				outputColor += vec3(f, f, f);
+
+				// cloud
+				float f2 = cloudAmount + FBM((position * 0.5) / 3.0, 8);
+				f2 = smoothstep(0.0, 1.0, f2 + 0.1);
+				outputColor = mix(outputColor, cloud, f2);
+
+				return outputColor;
+			}
+		</script>
+
+		<script id="fshader_jupiter" type="x-shader/x-fragment">
+			vec3 DrawSurfaceColor(vec3 position) {
+				vec3 outputColor;
+
+				float spotThreshold = 0.6;  // greater for fewer and smaller spots
+				vec3 displacement = vec3(81.3, 81.3, 81.3);
+				vec3 base = vec3(0.9, 0.31, 0.11);  // base color
+				vec3 bright = vec3(1.0, 0.8, 0.66);  // a brighter color
+				vec3 dark = vec3(0.57, 0.43, 0.18);  // another dark color
+				vec3 spot = vec3(0.8, 0.15, 0.1);  // big red spot color
+
+				// base + bright stripes
+				float y = position.y / 2.0 + FBM(position * 5.0, 3) / 300.0;
+				vec3 yPos = vec3(y, y, y);
+				float f = 0.1 + FBM(yPos, 5);
+				f = clamp((f + 1.0 / 2.0), 0.0, 1.0);  // re-scale to [0, 1]
+				outputColor = mix(bright, base, f);
+
+				// stripes of another color, making it more visual variance
+				y = position.y / 2.0 + PerlinNoise(position * 10.0) / 400.0;
+				yPos = vec3(y, y, y) + displacement;
+				f = 0.1 + FBM(yPos, 5);
+				f = clamp((f + 1.0 / 2.0), 0.0, 1.0);  // re-scale to [0, 1]
+				outputColor = mix(dark, outputColor, f);
+
+				// big red spot(s)
+				float f2 = PerlinNoise(position / 2.0);
+				if (f2 > spotThreshold) {
+					f2 -= spotThreshold;
+					f2 *= 6.0;  // simply amplify
+					f2 = clamp(f2, 0.0, 1.0);
+					outputColor = mix(outputColor, spot, f2);
+				}
+				return outputColor;
+			}
+		</script>
+
+		<script id="fshader_saturn" type="x-shader/x-fragment">
+			vec3 DrawSurfaceColor(vec3 position) {
+				vec3 outputColor;
+
+				vec3 displacement = vec3(526.9, 526.9, 526.9);
+				vec3 base = vec3(0.69, 0.57, 0.42);  // base color
+				vec3 bright = vec3(0.9, 0.8, 0.66);  // a brighter color
+				vec3 dark = vec3(0.78, 0.66, 0.66);  // another dark color
+
+				// base + bright stripes
+				float y = position.y / 1.5;
+				vec3 yPos = vec3(y, y, y);
+				float f = 0.1 + FBM(yPos, 5);
+				f = clamp((f + 1.0 / 2.0), 0.0, 1.0);  // re-scale to [0, 1]
+				outputColor = mix(bright, base, f);
+
+				// stripes of another color, making it more visual variance
+				y = position.y / 4.0;
+				yPos = vec3(y, y, y) + displacement;
+				f = 0.2 + FBM(yPos, 5);
+				f = clamp((f + 1.0 / 2.0), 0.0, 1.0);  // re-scale to [0, 1]
+				outputColor = mix(dark, outputColor, f);
+
+				return outputColor;
+			}
+		</script>
+
+		<script id="fshader_uranus" type="x-shader/x-fragment">
+			vec3 DrawSurfaceColor(vec3 position) {
+				vec3 outputColor;
+
+				vec3 displacement1 = vec3(689.414, 689.414, 689.414);
+				vec3 displacement2 = vec3(197.4, 197.4, 197.4);
+				vec3 base = vec3(0.12, 0.73, 0.84);  // base color
+				vec3 bright = vec3(0.35, 0.9, 1.0);  // a brighter color
+				vec3 dark = vec3(0.28, 0.13, 1.0);  // another dark color
+
+				// base + bright stripes
+				float y = position.y / 3.0;
+				vec3 yPos = vec3(y, y, y);
+				float f = 0.1 + FBM(yPos + displacement1, 5);
+				f = clamp((f + 1.0 / 2.0), 0.0, 0.7);  // re-scale to [0, 0.7]
+				outputColor = mix(bright, base, f);
+
+				// stripes of another color, making it more visual variance
+				y = position.y / 5.0;
+				yPos = vec3(y, y, y) + displacement2;
+				f = -0.7 + FBM(yPos, 3);
+				f = clamp((f + 1.0 / 2.0), 0.0, 0.5);  // re-scale to [0, 0.5]
+				outputColor = mix(outputColor, dark, f);
+
+				return outputColor;
+			}
+		</script>
+
+		<script id="fshader_neptune" type="x-shader/x-fragment">
+			vec3 DrawSurfaceColor(vec3 position) {
+				vec3 outputColor;
+
+				float spotThreshold = 0.65;  // greater for fewer and smaller spots
+				vec3 displacement = vec3(31.41, 59.26, 50.6);
+				vec3 base = vec3(0.31, 0.42, 1.0);  // base color
+				vec3 bright = vec3(0.32, 0.53, 1.0);  // a brighter color
+				vec3 dark = vec3(0.19, 0.2, 0.79);  // another dark color
+
+				// base + dark stripes (very low frequency)
+				float y = position.y / 6.0;
+				vec3 yPos = vec3(y, y, y) + displacement;
+				float f = 0.6 + FBM(yPos, 3);
+				f = clamp((f + 1.0 / 2.0), 0.0, 1.0);  // re-scale to [0, 1.0]
+				outputColor = mix(dark, base, f);
+
+				// stripes of a bright color
+				y = position.y * 4.0 + PerlinNoise(position * 5.0) / 80.0;
+				yPos = vec3(y, y, y);
+				f = -0.6 + FBM(yPos, 6) * PerlinNoise(position);
+				f = clamp((f + 1.0 / 2.0), 0.0, 1.0);  // re-scale to [0, 1.0]
+				outputColor = mix(outputColor, bright, f);
+
+				// spot(s)
+				float f2 = PerlinNoise(position / 2.0);
+				if (f2 > spotThreshold) {
+					f2 -= spotThreshold;
+					f2 *= 6.0;
+					outputColor = mix(outputColor, dark, f2);
+				}
+
+				return outputColor;
+			}
+		</script>
+
+		<script id="fshader_fbm" type="x-shader/x-fragment">
+			vec3 DrawSurfaceColor(vec3 inputPosition) {
+				float f = 0.4 + FBM(inputPosition, 8);
+				f = clamp(f, 0.0, 1.0);
+				return vec3(f, f, f);
+			}
+		</script>
+
+		<script>
+			LocalizeTitle();
+			DetectWebGLSupport();
+
+			var planets = [
+				new PlanetDesc("fBm",		"Base pattern to build all other things",		"vshader_planet", "fshader_fbm",	 true,  false),
+				new PlanetDesc("SUN",		"The best nuclear energy ",						"vshader_planet", "fshader_sun",	 true,  false),
+				new PlanetDesc("MERCURY",	"Can't really distinguish it from our Moon",	"vshader_planet", "fshader_mercury", false, false),
+				new PlanetDesc("VENUS",		"Hot as hell",									"vshader_planet", "fshader_venus",	 false, true, new THREE.Vector3(0.8, 0.7, 0.4),		0.27),
+				new PlanetDesc("EARTH",		"Your mom's home",								"vshader_planet", "fshader_earth",	 false, true, new THREE.Vector3(0.35, 0.6, 0.85),	0.3),
+				new PlanetDesc("MARS",		"We're almost there",							"vshader_planet", "fshader_mars",	 false, true, new THREE.Vector3(0.76, 0.52, 0.35),	0.23),
+				new PlanetDesc("JUPITER",	"The reason Galileo pissed off the Church",		"vshader_planet", "fshader_jupiter", false, true, new THREE.Vector3(0.7, 0.45, 0.3),	0.2),
+				new PlanetDesc("SATURN",	"SEGA<sup style='font-size: 13px;'>TM</sup>",	"vshader_planet", "fshader_saturn",	 false, true, new THREE.Vector3(0.65, 0.55, 0.3),	0.2),
+				new PlanetDesc("URANUS",	"Your anus",									"vshader_planet", "fshader_uranus",	 false, true, new THREE.Vector3(0.23, 0.55, 0.79),	0.21),
+				new PlanetDesc("NEPTUNE",	"Mathematical triumph",							"vshader_planet", "fshader_neptune", false, true, new THREE.Vector3(0.3, 0.35, 0.9),	0.21),
+			];
+
+			var camera;
+			var renderCanvas;
+			var planetRenderer;
+			var spaceRenderer;
+
+			var loader;
+			var controls;
+			var statsMeter;
+
+			// DOM objects
+			var loadingTip;
+			var nameTag;
+			var controlTip;
+			var controlTipAnimator;
+
+			function LocalizeTitle() {
+				var language = window.navigator.userLanguage || window.navigator.language;
+				if (language.toUpperCase().search("ZH") >= 0)
+					document.title = "燃燒吧，我的小宇宙！";
+			}
+
+			function DetectWebGLSupport() {
+				if (!Detector.webgl)
+					Detector.addGetWebGLMessage();
+				else {
+					document.body.onload = function () {
+						init();
+						checkLoadingStatus();
+					}
+				}
+			}
+
+			function PlanetDesc(name, subtitle, vertShaderName, fragShaderName, isEmissive, hasAtmosphere, atmosphereColor, atmosphereThickness) {
+				var name = (typeof name != "undefined" ? name : "fBm");
+				var subtitle = (typeof subtitle != "undefined" ? subtitle : "A strange thing.");
+				var vertShaderName = (typeof vertShaderName != "undefined" ? vertShaderName : "vshader_planet");
+				var fragShaderName = (typeof fragShaderName != "undefined" ? fragShaderName : "fshader_fbm");
+				var isEmissive = (typeof isEmissive != "undefined" ? isEmissive : false);
+				var hasAtmosphere = (typeof hasAtmosphere != "undefined" ? hasAtmosphere : false);
+				var atmosphereColor = (typeof atmosphereColor != "undefined" ? atmosphereColor : new THREE.Vector3(1, 1, 1));
+				var atmosphereThickness = (typeof atmosphereThickness != "undefined" ? atmosphereThickness : 0.5);
+
+				return ({
+					name: name,
+					subtitle: subtitle,
+					vertShaderName: vertShaderName,
+					fragShaderName: fragShaderName,
+					isEmissive: isEmissive,
+					hasAtmosphere: hasAtmosphere,
+					atmosphereColor: atmosphereColor,
+					atmosphereThickness: atmosphereThickness
+				});
+			}
+
+			function MaterialManager(param) {
+				var materials = new Array();
+
+				// params to construct THREE.ShaderMaterial
+				var uniforms = param.uniforms;
+				var vertShaderSrc = new Array();
+				var fragShaderSrc = new Array();
+
+				initVertShaderSrc(param.descriptions);
+				initFragShaderSrc(param.descriptions);
+				initMaterials(param.descriptions);
+
+				function initVertShaderSrc(descList) {
+					for (var i = 0; i < descList.length; i++) {
+						vertShaderSrc[i] = document.getElementById(descList[i].vertShaderName).textContent;
+					}
+				}
+
+				function initFragShaderSrc(descList) {
+					var srcNoiseLib = document.getElementById("fshader_noise").textContent;
+					for (var i = 0; i < descList.length; i++) {
+						var srcCore = document.getElementById(descList[i].fragShaderName).textContent;
+						var srcMainFunc = document.getElementById(descList[i].isEmissive ? "fshader_emissive" : "fshader_nonemissive").textContent;
+						fragShaderSrc[i] = srcNoiseLib + srcCore + srcMainFunc;
+					}
+				}
+
+				function initMaterials(descList) {
+					for (var i = 0; i < descList.length; i++) {
+						materials[i] = new THREE.ShaderMaterial({
+							uniforms: uniforms,
+							vertexShader: vertShaderSrc[i],
+							fragmentShader: fragShaderSrc[i]
+						});
+					}
+				}
+
+				return ({
+					getMaterial: function (index) {
+						var legalIndex = index;
+						if (legalIndex < 0 || legalIndex >= materials.length)
+							legalIndex = 0;
+						return materials[index];
+					},
+
+					getNumberOfMaterials: function () {
+						return materials.length;
+					},
+
+					setUniforms: function (newUni) {
+						uniforms = newUni;
+					}
+				});
+			}
+
+			function MaterialLoader() {
+				var camera = new THREE.PerspectiveCamera(45, 1, 1, 1);
+				var geometry = new THREE.Geometry();
+				geometry.vertices.push(new THREE.Vector3(0, 0, 1000)); // a point far behind the default camera position
+				var mesh = new THREE.ParticleSystem(geometry);
+				var scene = new THREE.Scene();
+				scene.add(mesh);
+
+				return ({
+					load: function (param) {
+						if (navigator.userAgent.toUpperCase().search("CHROME") > 0) {
+							param.target.initMaterial(param.material , {}, {}, mesh);
+						}
+						else {
+							mesh.material = param.material;
+							param.target.render(scene, camera);
+						}
+					}
+				});
+			}
+
+			function NumberRotater(maxNumber) {
+				var currIndex = 0;
+				var maxIndex = maxNumber - 1;
+				
+				return ({
+					rotateForward: function () {
+						if (++currIndex > maxIndex)
+							currIndex = 0;
+					},
+					rotateBackward: function () {
+						if (--currIndex < 0)
+							currIndex = maxIndex;
+					},
+					getCurrentIndex: function () {
+						return currIndex;
+					},
+					setCurrentIndex: function (index) {
+						currIndex = Math.abs(index) % (maxIndex + 1);
+					}
+				});
+			}
+
+			function PlanetRenderer(param) {
+				var planetDescList = param.planets;
+
+				var texture;
+				var uniformsPlanet;
+				var uniformsAtmos;
+
+				var surfaceMatMgr;
+				var atmosMat;
+
+				var geometryPlanet;
+				var geometryAtmos;
+				var meshPlanet;
+				var meshAtmos;
+
+				var scene;
+
+				var planetRotator;
+				var defaultIndex = 4;  // Earth by default
+
+				var materialLoader;
+
+				init();
+
+				function init() {
+					initNoisePerm();
+					initUniforms();
+					initMaterials();
+					initRotator(surfaceMatMgr.getNumberOfMaterials());
+
+					initGeometries();
+					initScene();
+
+					updateMaterial();
+				}
+
+				function evalGradient(noise) {
+					noise &= 0x0F;
+					var u = (noise<8 || noise==12 || noise==13 ? 1 : 2);
+					var v = (noise<4 || noise==12 || noise==13 ? 2 : 3);
+					u = ((noise & 1) ? -u : u);
+					v = ((noise & 2) ? -v : v);
+
+					var vecU = new THREE.Vector3(0, 0, 0);
+					vecU.setComponent(Math.abs(u) - 1, (u > 0 ? 1 : -1));
+					var vecV = new THREE.Vector3(0, 0, 0);
+					vecV.setComponent(Math.abs(v) - 1, (v > 0 ? 1 : -1));
+
+					vecU.addSelf(vecV);
+					vecU.addScalar(1);  // make negative elements positive
+					return vecU;
+				}
+
+				function initNoisePerm() {
+					// generate the noise permutation of no unique integers
+					// both values within and indices to the array should form a close ring
+					var noisePerm = new Uint8Array(256);
+					for (var i = 0; i < 256; i++)
+						noisePerm[i] = i;
+
+					// randomly re-permute the array
+					for (var i = 0; i < 256; i++) {
+						var swappedIndex = Math.floor(Math.random() * 256);
+						var tmpVal = noisePerm[i];
+						noisePerm[i] = noisePerm[swappedIndex];
+						noisePerm[swappedIndex] = tmpVal;
+					}
+
+					// pre-compute the texture for all (x, y, z) where x, y, z are in [0, 256)
+					var noisePerm3D = new Uint8Array(256 * 256 * 256 * 3);
+					for (var iz = 0; iz < 256; iz++) {
+						var blockX = (iz & 0x0F);
+						var blockY = iz >> 4;
+						for (var iy = 0; iy < 256; iy++) {
+							for (var ix = 0; ix < 256; ix++) {
+								var indexBase = ((4095 - blockY * 256 - iy) * 4096 + (blockX * 256 + ix)) * 3;
+
+								var hashedIndex = ix;
+								hashedIndex = ((noisePerm[hashedIndex] + iy) & 0xFF);
+								hashedIndex = ((noisePerm[hashedIndex] + iz) & 0xFF);
+
+								var gradient = evalGradient(noisePerm[hashedIndex]);
+								noisePerm3D[indexBase]   = gradient.x;
+								noisePerm3D[indexBase+1] = gradient.y;
+								noisePerm3D[indexBase+2] = gradient.z;
+							}
+						}
+					}
+
+					texture = new THREE.DataTexture(noisePerm3D, 4096, 4096, THREE.RGBFormat);
+					texture.unpackAlignment = 1;
+					texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+					texture.magFilter = texture.minFilter = THREE.NearestFilter;
+					texture.generateMipmaps = false;
+					texture.needsUpdate = true;
+				}
+
+				function initUniforms() {
+					uniformsPlanet = {
+						t_noisePerm	: {type: "t", value: texture},
+						u_radius	: {type: "f", value: 25},
+						u_transform : {type: "m4", value: new THREE.Matrix4()},
+						u_lightDir  : {type: "v3", value: new THREE.Vector3(-0.7071067, 0, -0.7071067)}
+					};
+					uniformsAtmos = {
+						u_enableAtmos : {type: "f", value: 0},
+						u_atmosColor  : {type: "v3", value: new THREE.Vector3(0, 0, 0)},
+						u_transform   : {type: "m4", value: new THREE.Matrix4()},
+						u_lightDir    : {type: "v3", value: new THREE.Vector3(-0.7071067, 0, -0.7071067)}
+					};
+				}
+
+				function initMaterials() {
+					surfaceMatMgr = new MaterialManager({
+						uniforms: uniformsPlanet,
+						descriptions: planetDescList,
+					});
+
+					atmosMat = new THREE.ShaderMaterial({
+						transparent: true,
+						uniforms: uniformsAtmos,
+						vertexShader: document.getElementById("vshader_planet").textContent,
+						fragmentShader: document.getElementById("fshader_atmosphere").textContent
+					});
+				}
+
+				function initRotator(numOfMat) {
+					planetRotator = new NumberRotater(numOfMat);
+					planetRotator.setCurrentIndex(defaultIndex);
+				}
+
+				function initGeometries() {
+					// planet surface
+					geometryPlanet = new THREE.SphereGeometry(25, 200, 200);
+					meshPlanet = new THREE.Mesh(geometryPlanet, surfaceMatMgr.getMaterial(planetRotator.getCurrentIndex()));
+					meshPlanet.rotation.x = 0.6;
+
+					// atmosphere
+					geometryAtmos = new THREE.SphereGeometry(1, 200, 200);
+					meshAtmos = new THREE.Mesh(geometryAtmos, atmosMat);
+				}
+
+				function initScene() {
+					scene = new THREE.Scene();
+					scene.add(meshPlanet);
+					scene.add(meshAtmos);
+				}
+
+				function updateMaterial() {
+					meshPlanet.material = surfaceMatMgr.getMaterial(planetRotator.getCurrentIndex());
+
+					meshAtmos.material.uniforms.u_enableAtmos.value = (planetDescList[planetRotator.getCurrentIndex()].hasAtmosphere ? 1.0 : -1.0);
+					meshAtmos.material.uniforms.u_atmosColor.value = planetDescList[planetRotator.getCurrentIndex()].atmosphereColor;
+					var radius = geometryPlanet.radius + planetDescList[planetRotator.getCurrentIndex()].atmosphereThickness;
+					meshAtmos.material.uniforms.u_transform.value.identity();
+					meshAtmos.material.uniforms.u_transform.value.scale(new THREE.Vector3(radius, radius, radius));
+				}
+
+				var loadingCounter = 0;
+
+				return ({
+					stepLoading: function (param) {
+						if (loadingCounter < surfaceMatMgr.getNumberOfMaterials()) {
+							this.setCurrentPlanet(loadingCounter);
+
+							var material = surfaceMatMgr.getMaterial(planetRotator.getCurrentIndex());
+							if (typeof materialLoader == "undefined")
+								materialLoader = new MaterialLoader();
+							materialLoader.load({
+								target: param.target,
+								material: material
+							});
+
+							loadingCounter++;
+						}
+
+						var loadedPercentage = (loadingCounter / surfaceMatMgr.getNumberOfMaterials());
+						if (loadedPercentage >= 1)
+							this.setCurrentPlanet(defaultIndex);  // set to default
+						return loadedPercentage;
+					},
+
+					renderNextFrameTo: function (param) {
+						var date = new Date();
+						meshPlanet.rotation.y = date.getTime() * 0.0002;
+						param.target.render(scene, param.camera);
+					},
+
+					rotateForward: function () {
+						planetRotator.rotateForward();
+						updateMaterial();
+					},
+
+					rotateBackward: function () {
+						planetRotator.rotateBackward();
+						updateMaterial();
+					},
+
+					setCurrentPlanet: function (index) {
+						if (index != planetRotator.getCurrentIndex) {
+							planetRotator.setCurrentIndex(index);
+							updateMaterial();
+						}
+					},
+
+					getCurrentPlanet: function () {
+						return planetRotator.getCurrentIndex();
+					}
+				});
+			}
+
+			function SpaceRenderer() {
+				var numStarsAmbient = 200000;
+				var numStarsMilkyway = 200000;
+
+				var geometry;
+				var mesh;
+				var scene;
+
+				init();
+
+				function init() {
+					initGeometry();
+					initScene();
+				}
+
+				function initGeometry() {
+					geometry = new THREE.Geometry();
+					var numIteration = numStarsAmbient + numStarsMilkyway;
+					for (var i = 0; i < numIteration; i++) {
+						var sample;
+						if (i < numStarsAmbient)
+							sample = new UniformSphereSample(Math.random(), Math.random());  // uniformly distrubute onto the spherical surface
+						else
+							sample = new MilkyWaySample(Math.random(), Math.random());
+						geometry.vertices.push(new THREE.Vector3(sample.phi, sample.theta));  // milky way
+
+						var color = new StellarColorSample(Math.random(), Math.random());
+						geometry.colors.push(new THREE.Vector3(color.r, color.g, color.b));
+					}
+
+					// attributes for star colors
+					var attributes = {
+						vertColor: { type: 'v3', value: geometry.colors }
+					};
+
+					var shaderMar = new THREE.ShaderMaterial({
+						uniforms: {
+							u_radius: { type: "f", value: 100000 },
+							u_pointSize: { type: "f", value: 1 }
+						},
+						vertexShader: document.getElementById("vshader_space").textContent,
+						fragmentShader: document.getElementById("fshader_space").textContent,
+						attributes: attributes,
+						depthTest: false,
+						depthWrite: false
+					});
+
+					mesh = new THREE.ParticleSystem(geometry, shaderMar);
+					mesh.rotation.x = -0.3;
+				}
+
+				// (x, y) is in [0, 1]^2
+				function UniformSphereSample(x, y) {
+					return ({
+						phi: x * Math.PI * 2,  // phi [0, 2*PI]
+						theta: Math.acos((y - 0.5) * 2)  // theta [-PI/2, PI/2]
+					});
+				}
+
+				// (x, y) is in [0, 1]^2
+				function MilkyWaySample(x, y) {
+					var power = 0.08;  // smaller for more concentrated milky way
+					return ({
+						phi: x * Math.PI * 2,  // phi [0, 2*PI]
+						theta: Math.acos((1 - Math.pow(y, power)) * (Math.random() > 0.5 ? 1 : -1))  // theta [-PI/2, PI/2]
+					});
+				}
+
+				// (x, y) is in [0, 1]^2
+				function StellarColorSample(x, y) {
+					// ref: http://www.jstor.org/stable/40710095
+					var probType = [0.12, 0.31, 0.12, 0.10, 0.28, 0.07];  // order: BAFGKM
+					var probBrightness = [0.006, 0.019, 0.063, 0.214, 0.698];  // 2.5 ~ 6.5 (step=1.0)
+
+					// ref: http://www.vendian.org/mncharity/dir3/starcolor/
+					var stellarColors = [
+						[0xaa, 0xbf, 0xff],  // B
+						[0xca, 0xd7, 0xff],  // A
+						[0xf8, 0xf7, 0xff],  // F
+						[0xff, 0xf4, 0xea],  // G
+						[0xff, 0xd2, 0xa1],  // K
+						[0xff, 0xcc, 0x6f]   // M
+					];
+
+					// get stellar type
+					function getType(x) {
+						var acc = 0;
+						for (var i = 0; i < probType.length; i++) {
+							acc += probType[i];
+							if (acc >= x)
+								return i;
+						}
+						return probType.length - 1;
+					}
+
+					// get stellar brightness
+					// mapping input to n/probBrightness.length (n = 1, 2 ... probBrightness.length)
+					function getBrightness(x) {
+						var acc = 0;
+						for (var i = 0; i < probBrightness.length; i++) {
+							acc += probBrightness[i];
+							if (acc >= x)
+								return (1 - i / probBrightness.length);
+						}
+						return 0;
+					}
+
+					var stellarType = getType(x);
+					var stellarBrightness = Math.min(getBrightness(y) + 0.2, 1);
+					return ({
+						r: stellarColors[stellarType][0] / 256 * stellarBrightness,
+						g: stellarColors[stellarType][1] / 256 * stellarBrightness,
+						b: stellarColors[stellarType][2] / 256 * stellarBrightness
+					});
+				}
+
+				function initScene() {
+					scene = new THREE.Scene();
+					scene.add(mesh);
+				}
+
+				return ({
+					renderNextFrameTo: function (param) {
+						var date = new Date();
+						mesh.rotation.y = date.getTime() * 5e-6;
+						param.target.render(scene, param.camera);
+					}
+				});
+			}
+
+			function Loader() {
+				var loadingList = new Array();
+
+				return ({
+					addLoadingObj: function (obj) {
+						if (typeof obj.stepLoading != "undefined")
+							loadingList.push(obj);
+					},
+
+					stepLoading: function (param) {
+						if (loadingList.length == 0)
+							return 1;  // need not load
+
+						var percentage = 0;
+						for (var i = 0; i < loadingList.length; i++)
+							percentage += (1 / loadingList.length) * loadingList[i].stepLoading(param);
+						return percentage;
+					}
+				});
+			}
+
+			function DOMAnimator(id, param) {
+				var elem = document.getElementById(id);
+				var attrName = param.attribute;
+				var currPos = param.currPos;
+				var endPos = currPos;
+
+				var FRAME_TIME = 17;  // unit: ms
+				var ANIM_SPEED = 0.2;
+
+				setInterval(
+					function () {
+						if (currPos != endPos) {
+							var displace = Math.max(Math.floor(Math.abs(endPos - currPos) * ANIM_SPEED), 1);
+							currPos += (endPos > currPos ? displace : -displace);
+							elem.style[attrName] = currPos + "px";
+						}
+					},
+					FRAME_TIME
+				);
+
+				return ({
+					setGoal: function (goal) {
+						endPos = goal;
+					}
+				});
+			}
+
+			function init() {
+				camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 1000);
+				camera.position.z = 100;
+
+				renderCanvas = new THREE.WebGLRenderer({
+					antialias: true
+				});
+				renderCanvas.autoClear = false;
+				renderCanvas.setSize(window.innerWidth, window.innerHeight);
+				renderCanvas.domElement.style.zIndex = -100;
+				document.body.appendChild(renderCanvas.domElement);
+
+				planetRenderer = new PlanetRenderer({
+					planets: planets
+				});
+				spaceRenderer = new SpaceRenderer();
+				loader = new Loader();
+				loader.addLoadingObj(planetRenderer);
+
+				controls = new THREE.TrackballControls(camera, renderCanvas.domElement);
+				controls.minDistance = 45;
+				controls.maxDistance = 550;
+
+				statsMeter = new Stats();
+				statsMeter.setMode(0);  // 0:fps, 1:ms
+				statsMeter.domElement.style.position = "absolute";
+				statsMeter.domElement.style.left = "0px";
+				statsMeter.domElement.style.top = "0px";
+				statsMeter.domElement.style.visibility = "hidden";
+				document.body.appendChild(statsMeter.domElement);
+
+				loadingTip = document.getElementById("loadingTip");
+				nameTag = document.getElementById("nameTag");
+				controlTip = document.getElementById("controlTip");
+				controlTipAnimator = new DOMAnimator("controlTip", {
+					attribute: "marginLeft",
+					currPos: -450
+				});
+
+				document.body.onkeydown = function (keyEvent) {
+					var KEY_LEFT = 37;
+					var KEY_UP = 38;
+					var KEY_RIGHT = 39;
+					var KEY_DOWN = 40;
+					var KEY_Z = 90;
+
+					if (keyEvent.keyCode == KEY_LEFT)
+						planetRenderer.rotateBackward();
+					else if (keyEvent.keyCode == KEY_RIGHT)
+						planetRenderer.rotateForward();
+					else if (keyEvent.keyCode >= 0x30 && keyEvent.keyCode <= 0x39)  // ASCII '0'~'9'
+						planetRenderer.setCurrentPlanet(keyEvent.keyCode - 0x30)
+					else if (keyEvent.keyCode == KEY_Z) {
+						statsMeter.domElement.style.visibility = (statsMeter.domElement.style.visibility == "hidden" ? "visible" : "hidden");
+						return false;
+					}
+					else
+						return true;
+
+					onRotatePlanet();
+					return false;
+				}
+
+				window.onresize = onResize;
+				onResize();
+				onRotatePlanet();
+			}
+
+			function onResize(resizeEvent) {
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+
+				controls.handleResize();
+
+				renderCanvas.setSize(window.innerWidth, window.innerHeight);
+
+				var scaleFactorY = window.innerHeight / 1075;
+				var transformCSS = "scale(" + scaleFactorY + ", " + scaleFactorY + ")";
+				nameTag.style["transform"] = transformCSS;
+				nameTag.style["-ms-transform"] = transformCSS;
+				nameTag.style["-moz-transform"] = transformCSS;
+				nameTag.style["-o-transform"] = transformCSS;
+				nameTag.style["-webkit-transform"] = transformCSS;
+				nameTag.style.left = Math.floor(window.innerWidth * 0.5 + 192 * scaleFactorY) + "px";
+			}
+
+			function onRotatePlanet() {
+				var desc = planets[planetRenderer.getCurrentPlanet()];
+				document.getElementById("nameTag_name").innerHTML = desc.name;
+				document.getElementById("nameTag_subtitle").innerHTML = desc.subtitle;
+			}
+
+			function checkLoadingStatus() {
+				var progress = loader.stepLoading({
+					target: renderCanvas,
+					camera: camera
+				});
+				loadingTip.innerHTML = "Now Loading....<br>" + (progress * 100).toFixed(0) + "%";
+
+				if (Math.abs(1 - progress) <= 1e-5) {
+					nameTag.style.visibility = "visible";
+					controlTip.style.visibility = "visible";
+					document.getElementById("copyright").style.visibility = "visible";
+
+					animate();
+					setTimeout(function () { loadingTip.style.visibility = "hidden"; }, 1000);
+				}
+				else {
+					setTimeout("checkLoadingStatus()", 17);  // 1 second / 60 frame ~= 17 ms/frame
+				}
+			}
+
+			function animate() {
+				requestAnimationFrame(animate);
+
+				renderCanvas.clear();
+				var param = {
+					target: renderCanvas,
+					camera: camera
+				};
+				spaceRenderer.renderNextFrameTo(param);
+				planetRenderer.renderNextFrameTo(param);
+
+				controls.update();
+				statsMeter.update();
+			}
+		</script>
+
+		<div id="controlTip" onmouseover="controlTipAnimator.setGoal(0);" onmouseout="controlTipAnimator.setGoal(-450);">
+			<div class="uiWindow"></div>
+			<div class="question">?</div>
+			<div class="uiText">
+				press 0~9 or LEFT/RIGHT key to switch b/t celestial objects.<br>
+				use mouse buttons and wheel to control the camera.
+			</div>
+		</div>
+
+		<div id="loadingTip"></div>
+
+		<div id="nameTag" class="transformable">
+			<div id="nameTag_name">A</div>
+			<div id="nameTag_subtitle">B</div>
+		</div>
+
+		<div id="copyright">
+			&copy; 2013 <a href="http://debug.tw">Mifan Bang</a>
+		</div>
+	</body>
+</html>
