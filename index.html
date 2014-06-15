@@ -365,10 +365,15 @@
 				vec3 mountain = vec3(0.74, 0.67, 0.52);  // mountain color
 				vec3 snow = vec3(0.95, 0.95, 0.95);  // snow color
 				vec3 ocean = vec3(0.085, 0.085, 0.57);  // ocean color
+				vec3 terrainDetailDisplacement = vec3(1.68, 54.38, 3.14);  // a random displacement to fragment position
 				vec3 cloudDisplacement = vec3(54.38, 3.14, 1.68);  // a random displacement to fragment position
 
+				// generate surface altitude
+				float surfaceAltiCoarse = FBM(position / 8.0, 4);
+				float surfaceAltiDetail = FBM(position + terrainDetailDisplacement, 8);
+				float f = mix(surfaceAltiCoarse, surfaceAltiDetail, 0.2);
+
 				// determine land or ocean
-				float f = FBM(position / 4.0, 8);
 				float specSharpness, specScale;
 				if (f > waterLevel) {
 					outputColor = mix(land, mountain, smoothstep(waterLevel, 1.0, f * 1.2));
