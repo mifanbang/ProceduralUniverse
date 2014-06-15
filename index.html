@@ -175,15 +175,18 @@
 		<script id="fshader_emissive" type="x-shader/x-fragment">
 			void main(void) {
 				vec3 outputRGB = DrawSurfaceColor(v_modelPosition);
+				outputRGB = pow(outputRGB, vec3(0.4545));  // convert from linear to sRGB
 				gl_FragColor = vec4(outputRGB, 1.0);
 			}
 		</script>
 
 		<script id="fshader_nonemissive" type="x-shader/x-fragment">
 			void main(void) {
-				vec3 outputRGB = DrawSurfaceColor(v_modelPosition);
-				float kDiff = dot(v_worldNormal, -u_lightDir);  // diffusive coefficient
-				gl_FragColor = vec4(outputRGB * kDiff, 1.0);
+				vec3 outputRGB = max(DrawSurfaceColor(v_modelPosition), vec3(0.0));
+				float kDiff = max(dot(v_worldNormal, -u_lightDir), 0.0);  // diffusive coefficient
+				outputRGB *= kDiff;
+				outputRGB = pow(outputRGB, vec3(0.4545));  // convert from linear to sRGB
+				gl_FragColor = vec4(outputRGB, 1.0);
 			}
 		</script>
 
@@ -293,8 +296,9 @@
 
 		<script id="fshader_sun" type="x-shader/x-fragment">
 			vec3 DrawSurfaceColor(vec3 position) {
-				float brightness = 0.25;  // greater for a brighter sun
-				float spotThreshold = 0.60;  // greater for fewer and smaller light spots
+				const float brightness = 0.1;  // greater for a brighter sun
+				const float spotThreshold = 0.60;  // greater for fewer and smaller light spots
+				const vec3 baseColor = vec3(0.75, 0.17, 0.0);
 				
 				float f = brightness + PerlinNoise(12.0 * position) / 3.0;  // base
 				float f2 = PerlinNoise(position);  // highly active areas (light spots)
@@ -302,14 +306,15 @@
 					f += 6.0 * (f2 - spotThreshold);  // some scaling to emphasize the light intensity
 
 				f *= 1.0 + PerlinNoise(position) / 1.75;  // a very low frequency noise
-				return vec3(0.75 + f, 0.2 + f, f);
+				//return vec3(0.53, 0.066, 0.0) + vec3(f, f, f);
+				return baseColor + vec3(f, f, f) * 0.75;
 			}
 		</script>
 
 		<script id="fshader_mercury" type="x-shader/x-fragment">
 			vec3 DrawSurfaceColor(vec3 position) {
-				float brightness = 0.3;  // greater for a brighter planet
-				vec3 displacement = vec3(54.38, 3.14, 1.68);  // a random displacement to fragment position
+				const float brightness = 0.05;  // greater for a brighter planet
+				const vec3 displacement = vec3(54.38, 3.14, 1.68);  // a random displacement to fragment position
 		
 				float f = FBM(position, 8) / 4.0;
 				float f2 = FBM(position * 3.0 + displacement, 4);
@@ -317,7 +322,7 @@
 				f = max(f, 0.0);
 				f2 = max(f2, 0.0);
 				f3 = max(f3, 0.0);
-				f = brightness + (f + 0.1) * (f2 + 0.5) + f3;
+				f = brightness + (f + 0.1) * (f2 + 0.2) + f3;
 				return vec3(f, f, f);
 			}
 		</script>
@@ -326,29 +331,29 @@
 			vec3 DrawSurfaceColor(vec3 position) {
 				vec3 outputColor;
 
-				vec3 displacement = vec3(54.38, 3.14, 1.68);
-				vec3 base = vec3(0.71, 0.60, 0.39);  // base color
-				vec3 cloud1 = vec3(0.96, 0.93, 0.72);  // a cloud color
-				vec3 cloud2 = vec3(0.89, 0.82, 0.49);  // another cloud color
-				vec3 dark = vec3(0.48, 0.46, 0.37);  // dark cloud color
+				const vec3 displacement = vec3(54.38, 3.14, 1.68);  // a random displacement to fragment position
+				const vec3 base = vec3(0.47, 0.33, 0.13);  // base color
+				const vec3 cloud1 = vec3(0.91, 0.85, 0.49);  // a cloud color
+				const vec3 cloud2 = vec3(0.77, 0.65, 0.21);  // another cloud color
+				const vec3 dark = vec3(0.20, 0.18, 0.11);  // dark cloud color
 		
-				// let y-component dominate while x- and z-component affect a little bit
+				// let y-component dominate while x- and z-component still contribute in a small portion
 				vec3 pos = vec3(position.x / 3.0, position.y, position.z / 3.0);
 		
 				// base + first cloud color
 				float f = 0.3 + FBM(pos / 3.0, 4);
-				f = clamp((f + 1.0 / 2.0), 0.0, 1.0);  // re-scale to [0, 1]
+				f = clamp(f * 0.5 + 0.5, 0.0, 1.0);  // re-scale to [0, 1]
 				outputColor = mix(cloud1, base, f);
 		
 				// second cloud color
 				f = 0.2 + FBM((pos + displacement) / 2.0, 4);
-				f = clamp((f + 1.0 / 2.0), 0.0, 1.0);  // re-scale to [0, 1]
+				f = clamp(f * 0.5 + 0.5, 0.0, 1.0);  // re-scale to [0, 1]
 				outputColor = mix(cloud2, outputColor, f);
 		
 				// some shaded clouds
 				pos.y += FBM(position * 5.0, 2) / 150.0;
 				f = 0.45 + FBM(pos, 4) * PerlinNoise(position / 2.0);
-				f = clamp((f + 1.0 / 2.0), 0.0, 1.0);  // re-scale to [0, 1]
+				f = clamp(f * 0.5 + 0.5, 0.0, 1.0);  // re-scale to [0, 1]
 				outputColor = mix(dark, outputColor, f);
 
 				return outputColor;
@@ -359,14 +364,14 @@
 			vec3 DrawSurfaceColor(vec3 position) {
 				vec3 outputColor;
 
-				float waterLevel = 0.15;  // greater for lesser land
-				float cloudAmount = 0.1;  // greater for more and heavier clouds
-				vec3 land = vec3(0.0, 0.31, 0.0);  // land color
-				vec3 mountain = vec3(0.74, 0.67, 0.52);  // mountain color
-				vec3 snow = vec3(0.95, 0.95, 0.95);  // snow color
-				vec3 ocean = vec3(0.085, 0.085, 0.57);  // ocean color
-				vec3 terrainDetailDisplacement = vec3(1.68, 54.38, 3.14);  // a random displacement to fragment position
-				vec3 cloudDisplacement = vec3(54.38, 3.14, 1.68);  // a random displacement to fragment position
+				const float seaLevel = 0.25;  // greater for lesser land
+				const float snowLevel = 0.6;  // greater for more snow
+				const vec3 land = vec3(0.011, 0.11, 0.0036);  // land color
+				const vec3 mountain = vec3(0.52, 0.47, 0.029);  // mountain color
+				const vec3 ocean = vec3(0.0046, 0.0046, 0.21);  // ocean color
+				const vec3 white = vec3(0.95, 0.95, 0.95);  // snow/cloud color
+				const vec3 terrainDetailDisplacement = vec3(1.68, 54.38, 3.14);  // a random displacement to fragment position
+				const vec3 cloudDisplacement = vec3(54.38, 3.14, 1.68);  // a random displacement to fragment position
 
 				// generate surface altitude
 				float surfaceAltiCoarse = FBM(position / 8.0, 4);
@@ -375,16 +380,16 @@
 
 				// determine land or ocean
 				float specSharpness, specScale;
-				if (f > waterLevel) {
-					outputColor = mix(land, mountain, smoothstep(waterLevel, 1.0, f * 1.2));
-					if (f > 0.6)
-						outputColor = mix(outputColor, snow * 3.0, f - 0.6);
+				if (f > seaLevel) {
+					outputColor = mix(land, mountain, smoothstep(seaLevel, 1.0, f));
+					if (f > snowLevel)
+						outputColor = mix(outputColor, white, (f - snowLevel) * 30.0);
 					specSharpness = 15.0;
-					specScale = 0.4;
+					specScale = 0.15;
 				}
 				else {
 					outputColor = ocean;  
-					specSharpness = 45.0;
+					specSharpness = 60.0;
 					specScale = 0.7;
 				}
 
@@ -395,9 +400,9 @@
 				outputColor += kSpec * specScale;
 
 				// cloud
-				float f2 = cloudAmount + FBM((position + cloudDisplacement) / 2.0, 8);
+				float f2 = FBM((position + cloudDisplacement) / 2.0, 8);
 				f2 = max(0.0, f2);
-				outputColor = mix(outputColor, vec3(1.0, 1.0, 1.0), f2);
+				outputColor = mix(outputColor, white, f2);
 
 				return outputColor;
 			}
@@ -407,18 +412,18 @@
 			vec3 DrawSurfaceColor(vec3 position) {
 				vec3 outputColor;
 
-				float cloudAmount = -0.25;  // greater for more and heavier clouds
-				vec3 displacement = vec3(31.41, 59.26, 50.6);  // a random displacement to fragment position
-				vec3 land = vec3(0.71, 0.38, 0.14);  // land color
-				vec3 dark = vec3(0.46, 0.20, 0.11);  // darker land color
-				vec3 cloud = vec3(1.0, 1.0, 1.0);  // cloud color
+				const float cloudAmount = -0.25;  // greater for more and heavier clouds
+				const vec3 displacement = vec3(31.41, 59.26, 50.6);  // a random displacement to fragment position
+				const vec3 land = vec3(0.47, 0.12, 0.013) * 0.9;  // land color
+				const vec3 dark = vec3(0.18, 0.029, 0.0078);  // darker land color
+				const vec3 cloud = vec3(1.0, 1.0, 1.0);  // cloud color
 
 				float f = -0.05 + FBM((position + displacement) / 10.0, 8);
 				float amp = 1.6;  // larger for more limited area to blend
 				outputColor = mix(dark, land, smoothstep(-0.1, 0.1, f * amp));  // lowland for f<-0.1; highland for f>0.1
 
 				// a low frequency noise
-				f = FBM(position, 2) / 25.0;
+				f = (FBM(position, 2) - 0.5) / 80.0;
 				outputColor += vec3(f, f, f);
 
 				// cloud
@@ -434,25 +439,25 @@
 			vec3 DrawSurfaceColor(vec3 position) {
 				vec3 outputColor;
 
-				float spotThreshold = 0.6;  // greater for fewer and smaller spots
-				vec3 displacement = vec3(81.3, 81.3, 81.3);
-				vec3 base = vec3(0.9, 0.31, 0.11);  // base color
-				vec3 bright = vec3(1.0, 0.8, 0.66);  // a brighter color
-				vec3 dark = vec3(0.57, 0.43, 0.18);  // another dark color
-				vec3 spot = vec3(0.8, 0.15, 0.1);  // big red spot color
+				const float spotThreshold = 0.6;  // greater for fewer and smaller spots
+				const vec3 displacement = vec3(81.3, 81.3, 81.3);
+				const vec3 base = vec3(0.79, 0.076, 0.0078);  // base color
+				const vec3 bright = vec3(1.0, 0.61, 0.40);  // a brighter color
+				const vec3 dark = vec3(0.29, 0.16, 0.023);  // another dark color
+				const vec3 spot = vec3(0.61, 0.015, 0.0063);  // big red spot color
 
 				// base + bright stripes
 				float y = position.y / 2.0 + FBM(position * 5.0, 3) / 300.0;
 				vec3 yPos = vec3(y, y, y);
-				float f = 0.1 + FBM(yPos, 5);
-				f = clamp((f + 1.0 / 2.0), 0.0, 1.0);  // re-scale to [0, 1]
+				float f = FBM(yPos, 5);
+				f = clamp(f * 0.5 + 0.75, 0.0, 1.0);  // re-scale to [0, 1]
 				outputColor = mix(bright, base, f);
 
-				// stripes of another color, making it more visual variance
+				// stripes of another color, making it more visually variant
 				y = position.y / 2.0 + PerlinNoise(position * 10.0) / 400.0;
 				yPos = vec3(y, y, y) + displacement;
-				f = 0.1 + FBM(yPos, 5);
-				f = clamp((f + 1.0 / 2.0), 0.0, 1.0);  // re-scale to [0, 1]
+				f = FBM(yPos, 5);
+				f = clamp(f * 0.5 + 0.5, 0.0, 1.0);  // re-scale to [0, 1]
 				outputColor = mix(dark, outputColor, f);
 
 				// big red spot(s)
@@ -471,23 +476,23 @@
 			vec3 DrawSurfaceColor(vec3 position) {
 				vec3 outputColor;
 
-				vec3 displacement = vec3(526.9, 526.9, 526.9);
-				vec3 base = vec3(0.69, 0.57, 0.42);  // base color
-				vec3 bright = vec3(0.9, 0.8, 0.66);  // a brighter color
-				vec3 dark = vec3(0.78, 0.66, 0.66);  // another dark color
+				const vec3 displacement = vec3(526.9, 526.9, 526.9);
+				const vec3 base = vec3(0.44, 0.29, 0.15);  // base color
+				const vec3 bright = vec3(0.79, 0.61, 0.40);  // a brighter color
+				const vec3 dark = vec3(0.58, 0.40, 0.40);  // another dark color
 
 				// base + bright stripes
 				float y = position.y / 1.5;
 				vec3 yPos = vec3(y, y, y);
 				float f = 0.1 + FBM(yPos, 5);
-				f = clamp((f + 1.0 / 2.0), 0.0, 1.0);  // re-scale to [0, 1]
+				f = clamp(f * 0.5 + 0.5, 0.0, 1.0);  // re-scale to [0, 1]
 				outputColor = mix(bright, base, f);
 
 				// stripes of another color, making it more visual variance
 				y = position.y / 4.0;
 				yPos = vec3(y, y, y) + displacement;
 				f = 0.2 + FBM(yPos, 5);
-				f = clamp((f + 1.0 / 2.0), 0.0, 1.0);  // re-scale to [0, 1]
+				f = clamp(f * 0.5 + 0.5, 0.0, 1.0);  // re-scale to [0, 1]
 				outputColor = mix(dark, outputColor, f);
 
 				return outputColor;
@@ -498,24 +503,24 @@
 			vec3 DrawSurfaceColor(vec3 position) {
 				vec3 outputColor;
 
-				vec3 displacement1 = vec3(689.414, 689.414, 689.414);
-				vec3 displacement2 = vec3(197.4, 197.4, 197.4);
-				vec3 base = vec3(0.12, 0.73, 0.84);  // base color
-				vec3 bright = vec3(0.35, 0.9, 1.0);  // a brighter color
-				vec3 dark = vec3(0.28, 0.13, 1.0);  // another dark color
+				const vec3 displacement1 = vec3(689.414, 689.414, 689.414);
+				const vec3 displacement2 = vec3(197.4, 197.4, 197.4);
+				const vec3 base = vec3(0.0094, 0.50, 0.68);  // base color
+				const vec3 bright = vec3(0.099, 0.79, 1.0);  // a brighter color
+				const vec3 dark = vec3(0.060, 0.011, 1.0);  // another dark color
 
 				// base + bright stripes
 				float y = position.y / 3.0;
 				vec3 yPos = vec3(y, y, y);
 				float f = 0.1 + FBM(yPos + displacement1, 5);
-				f = clamp((f + 1.0 / 2.0), 0.0, 0.7);  // re-scale to [0, 0.7]
+				f = clamp(f * 0.5 + 0.5, 0.0, 0.7);  // re-scale to [0, 0.7]
 				outputColor = mix(bright, base, f);
 
 				// stripes of another color, making it more visual variance
 				y = position.y / 5.0;
 				yPos = vec3(y, y, y) + displacement2;
 				f = -0.7 + FBM(yPos, 3);
-				f = clamp((f + 1.0 / 2.0), 0.0, 0.5);  // re-scale to [0, 0.5]
+				f = clamp(f * 0.5 + 0.5, 0.0, 0.5);  // re-scale to [0, 0.5]
 				outputColor = mix(outputColor, dark, f);
 
 				return outputColor;
@@ -526,24 +531,24 @@
 			vec3 DrawSurfaceColor(vec3 position) {
 				vec3 outputColor;
 
-				float spotThreshold = 0.65;  // greater for fewer and smaller spots
-				vec3 displacement = vec3(31.41, 59.26, 50.6);
-				vec3 base = vec3(0.31, 0.42, 1.0);  // base color
-				vec3 bright = vec3(0.32, 0.53, 1.0);  // a brighter color
-				vec3 dark = vec3(0.19, 0.2, 0.79);  // another dark color
+				const float spotThreshold = 0.65;  // greater for fewer and smaller spots
+				const vec3 displacement = vec3(31.41, 59.26, 50.6);
+				const vec3 base = vec3(0.076, 0.15, 1.0);  // base color
+				const vec3 bright = vec3(0.082, 0.25, 1.0);  // a brighter color
+				const vec3 dark = vec3(0.026, 0.029, 0.60);  // another dark color
 
 				// base + dark stripes (very low frequency)
 				float y = position.y / 6.0;
 				vec3 yPos = vec3(y, y, y) + displacement;
 				float f = 0.6 + FBM(yPos, 3);
-				f = clamp((f + 1.0 / 2.0), 0.0, 1.0);  // re-scale to [0, 1.0]
+				f = clamp(f * 0.5 + 0.5, 0.0, 1.0);  // re-scale to [0, 1.0]
 				outputColor = mix(dark, base, f);
 
 				// stripes of a bright color
 				y = position.y * 4.0 + PerlinNoise(position * 5.0) / 80.0;
 				yPos = vec3(y, y, y);
-				f = -0.6 + FBM(yPos, 6) * PerlinNoise(position);
-				f = clamp((f + 1.0 / 2.0), 0.0, 1.0);  // re-scale to [0, 1.0]
+				f = FBM(yPos, 6) * PerlinNoise(position);
+				f = clamp(f * 0.5, 0.0, 0.5);  // re-scale to [0, 0.5]
 				outputColor = mix(outputColor, bright, f);
 
 				// spot(s)
@@ -560,7 +565,7 @@
 
 		<script id="fshader_fbm" type="x-shader/x-fragment">
 			vec3 DrawSurfaceColor(vec3 inputPosition) {
-				float f = 0.4 + FBM(inputPosition, 8);
+				float f = FBM(inputPosition, 8) + 0.2;  // add a constant to decrease negative area
 				f = clamp(f, 0.0, 1.0);
 				return vec3(f, f, f);
 			}
@@ -1269,7 +1274,7 @@
 		</div>
 
 		<div id="copyright">
-			&copy; 2013 <a href="http://debug.tw">Mifan Bang</a>
+			&copy; 2013-2014 <a href="http://debug.tw">Mifan Bang</a>
 		</div>
 	</body>
 </html>
