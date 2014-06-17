@@ -124,7 +124,7 @@
 	</head>
 
 	<body>
-		<script src="dep/three-r54.js"></script>
+		<script src="dep/three-r67.js"></script>
 		<script src="dep/stats-r11.js"></script>
 		<script src="dep/Detector.js"></script>
 		<script src="dep/TrackballControls.js"></script>
@@ -205,7 +205,7 @@
 					float threshold = 0.85;
 					if (thickness > threshold)
 						thickness = threshold - smoothstep(0.0, threshold, (thickness - threshold) / (1.0 - threshold));  // smooth near the edge
-					enhancedThickness = pow(thickness, 3.0);
+					enhancedThickness = pow(max(thickness, 0.0), 3.0);
 
 					// scattering effect
 					float brightness = dot(v_worldNormal, -u_lightDir);  // diffusive base brightness
@@ -788,7 +788,7 @@
 					var vecV = new THREE.Vector3(0, 0, 0);
 					vecV.setComponent(Math.abs(v) - 1, (v > 0 ? 1 : -1));
 
-					vecU.addSelf(vecV);
+					vecU.add(vecV);
 					vecU.addScalar(1);  // make negative elements positive
 					return vecU;
 				}
@@ -893,7 +893,7 @@
 
 					meshAtmos.material.uniforms.u_enableAtmos.value = (planetDescList[planetRotator.getCurrentIndex()].hasAtmosphere ? 1.0 : -1.0);
 					meshAtmos.material.uniforms.u_atmosColor.value = planetDescList[planetRotator.getCurrentIndex()].atmosphereColor;
-					var radius = geometryPlanet.radius + planetDescList[planetRotator.getCurrentIndex()].atmosphereThickness;
+					var radius = geometryPlanet.parameters.radius + planetDescList[planetRotator.getCurrentIndex()].atmosphereThickness;
 					meshAtmos.material.uniforms.u_transform.value.identity();
 					meshAtmos.material.uniforms.u_transform.value.scale(new THREE.Vector3(radius, radius, radius));
 				}
