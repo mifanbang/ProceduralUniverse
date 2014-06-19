@@ -172,6 +172,23 @@
 			}
 		</script>
 
+		<script id="fshader_lighting" type="x-shader/x-fragment">
+			struct LightingResult {
+				vec3 albedo;
+				vec3 specular;
+			};
+
+			vec3 CalcLommelSeeliger(vec3 albedo, vec3 normal, vec3 light, vec3 view) {
+				float uIncident = max(dot(light, normal), 0.0);
+				float uReflective = max(dot(view, normal), 0.0);
+				return albedo * uIncident / (uIncident + uReflective);
+			}
+
+			vec3 CalcLambertian(vec3 albedo, vec3 normal, vec3 light) {
+				return max(dot(normal, light), 0.0) * albedo;
+			}
+		</script>
+
 		<script id="fshader_emissive" type="x-shader/x-fragment">
 			void main(void) {
 				vec3 outputRGB = DrawSurfaceColor(v_modelPosition);
@@ -182,9 +199,17 @@
 
 		<script id="fshader_nonemissive" type="x-shader/x-fragment">
 			void main(void) {
-				vec3 outputRGB = max(DrawSurfaceColor(v_modelPosition), vec3(0.0));
-				float kDiff = max(dot(v_worldNormal, -u_lightDir), 0.0);  // diffusive coefficient
-				outputRGB *= kDiff;
+				LightingResult surface = DrawSurfaceColor(v_modelPosition);
+
+				vec3 diffuse = CalcLommelSeeliger(
+					max(surface.albedo, vec3(0.0)),
+					v_worldNormal,
+					-u_lightDir,
+					normalize(cameraPosition - v_worldPosition)
+				);
+				vec3 specular = max(surface.specular, vec3(0.0));
+				vec3 outputRGB = diffuse * 1.4 + specular;  // TODO: modify colors in respective DrawSurfaceColor() and remove the scaling constant
+
 				outputRGB = pow(outputRGB, vec3(0.4545));  // convert from linear to sRGB
 				gl_FragColor = vec4(outputRGB, 1.0);
 			}
@@ -306,13 +331,12 @@
 					f += 6.0 * (f2 - spotThreshold);  // some scaling to emphasize the light intensity
 
 				f *= 1.0 + PerlinNoise(position) / 1.75;  // a very low frequency noise
-				//return vec3(0.53, 0.066, 0.0) + vec3(f, f, f);
 				return baseColor + vec3(f, f, f) * 0.75;
 			}
 		</script>
 
 		<script id="fshader_mercury" type="x-shader/x-fragment">
-			vec3 DrawSurfaceColor(vec3 position) {
+			LightingResult DrawSurfaceColor(vec3 position) {
 				const float brightness = 0.05;  // greater for a brighter planet
 				const vec3 displacement = vec3(54.38, 3.14, 1.68);  // a random displacement to fragment position
 		
@@ -323,12 +347,15 @@
 				f2 = max(f2, 0.0);
 				f3 = max(f3, 0.0);
 				f = brightness + (f + 0.1) * (f2 + 0.2) + f3;
-				return vec3(f, f, f);
+
+				LightingResult result;
+				result.albedo = vec3(f, f, f);
+				return result;
 			}
 		</script>
 
 		<script id="fshader_venus" type="x-shader/x-fragment">
-			vec3 DrawSurfaceColor(vec3 position) {
+			LightingResult DrawSurfaceColor(vec3 position) {
 				vec3 outputColor;
 
 				const vec3 displacement = vec3(54.38, 3.14, 1.68);  // a random displacement to fragment position
@@ -356,12 +383,14 @@
 				f = clamp(f * 0.5 + 0.5, 0.0, 1.0);  // re-scale to [0, 1]
 				outputColor = mix(dark, outputColor, f);
 
-				return outputColor;
+				LightingResult result;
+				result.albedo = outputColor;
+				return result;
 			}
 		</script>
 
 		<script id="fshader_earth" type="x-shader/x-fragment">
-			vec3 DrawSurfaceColor(vec3 position) {
+			LightingResult DrawSurfaceColor(vec3 position) {
 				vec3 outputColor;
 
 				const float seaLevel = 0.25;  // greater for lesser land
@@ -385,31 +414,34 @@
 					if (f > snowLevel)
 						outputColor = mix(outputColor, white, (f - snowLevel) * 30.0);
 					specSharpness = 15.0;
-					specScale = 0.15;
+					specScale = 0.2;
 				}
 				else {
 					outputColor = ocean;  
-					specSharpness = 60.0;
-					specScale = 0.7;
+					specSharpness = 30.0;
+					specScale = 1.0;
 				}
 
 				// specular term
 				vec3 viewDir = normalize(cameraPosition - v_worldPosition);
-				vec3 halfway = normalize(viewDir - u_lightDir);
-				float kSpec = pow(clamp(dot(halfway, v_worldNormal), 0.0, 1.0), specSharpness);  // specular term
-				outputColor += kSpec * specScale;
+				vec3 reflectedLight = normalize(reflect(u_lightDir, v_worldNormal));
+				float kSpec = pow(max(dot(viewDir, reflectedLight), 0.0), specSharpness);
 
 				// cloud
 				float f2 = FBM((position + cloudDisplacement) / 2.0, 8);
 				f2 = max(0.0, f2);
 				outputColor = mix(outputColor, white, f2);
+				specScale *= 1.0 - f2;//mix(specScale, 1.0, f2);
 
-				return outputColor;
+				LightingResult result;
+				result.albedo = outputColor;
+				result.specular = vec3(0.0) + kSpec * specScale;
+				return result;
 			}
 		</script>
 
 		<script id="fshader_mars" type="x-shader/x-fragment">
-			vec3 DrawSurfaceColor(vec3 position) {
+			LightingResult DrawSurfaceColor(vec3 position) {
 				vec3 outputColor;
 
 				const float cloudAmount = -0.25;  // greater for more and heavier clouds
@@ -431,12 +463,14 @@
 				f2 = smoothstep(0.0, 1.0, f2 + 0.1);
 				outputColor = mix(outputColor, cloud, f2);
 
-				return outputColor;
+				LightingResult result;
+				result.albedo = outputColor;
+				return result;
 			}
 		</script>
 
 		<script id="fshader_jupiter" type="x-shader/x-fragment">
-			vec3 DrawSurfaceColor(vec3 position) {
+			LightingResult DrawSurfaceColor(vec3 position) {
 				vec3 outputColor;
 
 				const float spotThreshold = 0.6;  // greater for fewer and smaller spots
@@ -468,12 +502,15 @@
 					f2 = clamp(f2, 0.0, 1.0);
 					outputColor = mix(outputColor, spot, f2);
 				}
-				return outputColor;
+
+				LightingResult result;
+				result.albedo = outputColor;
+				return result;
 			}
 		</script>
 
 		<script id="fshader_saturn" type="x-shader/x-fragment">
-			vec3 DrawSurfaceColor(vec3 position) {
+			LightingResult DrawSurfaceColor(vec3 position) {
 				vec3 outputColor;
 
 				const vec3 displacement = vec3(526.9, 526.9, 526.9);
@@ -495,12 +532,14 @@
 				f = clamp(f * 0.5 + 0.5, 0.0, 1.0);  // re-scale to [0, 1]
 				outputColor = mix(dark, outputColor, f);
 
-				return outputColor;
+				LightingResult result;
+				result.albedo = outputColor;
+				return result;
 			}
 		</script>
 
 		<script id="fshader_uranus" type="x-shader/x-fragment">
-			vec3 DrawSurfaceColor(vec3 position) {
+			LightingResult DrawSurfaceColor(vec3 position) {
 				vec3 outputColor;
 
 				const vec3 displacement1 = vec3(689.414, 689.414, 689.414);
@@ -523,12 +562,14 @@
 				f = clamp(f * 0.5 + 0.5, 0.0, 0.5);  // re-scale to [0, 0.5]
 				outputColor = mix(outputColor, dark, f);
 
-				return outputColor;
+				LightingResult result;
+				result.albedo = outputColor;
+				return result;
 			}
 		</script>
 
 		<script id="fshader_neptune" type="x-shader/x-fragment">
-			vec3 DrawSurfaceColor(vec3 position) {
+			LightingResult DrawSurfaceColor(vec3 position) {
 				vec3 outputColor;
 
 				const float spotThreshold = 0.65;  // greater for fewer and smaller spots
@@ -559,7 +600,9 @@
 					outputColor = mix(outputColor, dark, f2);
 				}
 
-				return outputColor;
+				LightingResult result;
+				result.albedo = outputColor;
+				return result;
 			}
 		</script>
 
@@ -662,10 +705,11 @@
 
 				function initFragShaderSrc(descList) {
 					var srcNoiseLib = document.getElementById("fshader_noise").textContent;
+					var srcLightingLib = document.getElementById("fshader_lighting").textContent;
 					for (var i = 0; i < descList.length; i++) {
 						var srcCore = document.getElementById(descList[i].fragShaderName).textContent;
 						var srcMainFunc = document.getElementById(descList[i].isEmissive ? "fshader_emissive" : "fshader_nonemissive").textContent;
-						fragShaderSrc[i] = srcNoiseLib + srcCore + srcMainFunc;
+						fragShaderSrc[i] = srcNoiseLib + srcLightingLib + srcCore + srcMainFunc;
 					}
 				}
 
