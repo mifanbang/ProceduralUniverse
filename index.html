@@ -188,7 +188,7 @@
 			vec3 CalcFresnelSchlick(vec3 specularColor, vec3 L, vec3 H) {
 				// using mix() to rewrite Schlick's approximation
 				vec3 white = vec3(1.0);
-				vec3 blendingOpponent = vec3(pow(1.0 - clamp(dot(L, H), 0.0, 1.0), 5.0));
+				vec3 blendingOpponent = vec3(pow(1.0 - max(dot(L, H), 0.0), 5.0));
 				return mix(blendingOpponent, white, specularColor);
 			}
 
@@ -197,13 +197,13 @@
 				return (sharpness + 2.0) / twoPI * pow(max(dotNH, 0.0), sharpness);
 			}
 
-			float CalcGeometricAntennuation(float dotNH_2, float dotNV, float dotNL, float dotVH_inv) {
+			float CalcGeomAntCookTorrance(float dotNH_2, float dotNV, float dotNL, float dotVH_inv) {
 				float g1 = (dotNH_2 * dotNV) * dotVH_inv;
 				float g2 = (dotNH_2 * dotNL) * dotVH_inv;
 				return min(1.0, min(g1, g2));
 			}
 
-			vec3 CalcTorranceSparrow(vec3 N, vec3 L, vec3 V, float glossiness, vec3 specColor) {
+			vec3 CalcTorranceSparrow(vec3 N, vec3 L, vec3 V, float glossiness, vec3 specColor, out vec3 fresnel) {
 				vec3 H = normalize(V + L);
 				float specularPower = exp2(10.0 * glossiness + 1.0);
 				float dotNL = dot(N, L);
@@ -211,8 +211,9 @@
 				float dotNH = dot(N, H);
 				float dotVH = dot(V, H);
 
-				vec3 radiance = CalcFresnelSchlick(specColor, L, H)
-					* CalcGeometricAntennuation(2.0 * dotNH, dotNV, dotNL, 1.0 / dotVH)
+				fresnel = CalcFresnelSchlick(specColor, L, H);
+				vec3 radiance = fresnel
+					* CalcGeomAntCookTorrance(2.0 * dotNH, dotNV, dotNL, 1.0 / dotVH)
 					* CalcDistributionBlinn(specularPower, dotNH)
 					/ (dotNV * 4.0);  // dotNL is cancelled out in the denominator
 
@@ -229,8 +230,14 @@
 		</script>
 
 		<script id="fshader_nonemissive" type="x-shader/x-fragment">
-			vec3 CalcToneMapReinhard(vec3 hdrColor) {
-				return hdrColor / (vec3(1.0) + hdrColor);
+			vec3 CalcToneMapUncharted2(vec3 hdrColor) {
+				float A = 0.22;  // shoulder strength
+				float B = 0.30;  // linear strength
+				float C = 0.10;  // linear angle
+				float D = 0.20;  // toe strength
+				float E = 0.02;  // toe numerator
+				float F = 0.30;  // toe denominator
+				return ((hdrColor*(A*hdrColor+C*B)+D*E) / (hdrColor*(A*hdrColor+B)+D*F)) - E / F;
 			}
 
 			vec3 ConvertLinearToSRGB(vec3 linearColor) {
@@ -238,9 +245,13 @@
 			}
 
 			void main(void) {
+				const float irradianceSun = 3.0;
+
 				LightingResult surface = DrawSurfaceColor(v_modelPosition);
 				vec3 viewDir = normalize(cameraPosition - v_worldPosition);
+				vec3 radiance;
 
+				// diffuse term: Loomel-Seeliger model
 				vec3 diffuse = CalcLommelSeeliger(
 					max(surface.albedo, vec3(0.0)),
 					v_worldNormal,	// N
@@ -248,22 +259,24 @@
 					viewDir			// V
 				);
 
-				vec3 specular;
+				// specular term: Torrance-Sparrow model
 				if (surface.glossiness > 0.0) {  // only render highlights if glossiness is explicitly assigned in DrawSurfaceColor()
-					specular = CalcTorranceSparrow(
+					vec3 fresnel;
+					vec3 specular = CalcTorranceSparrow(
 						v_worldNormal,	// N
 						-u_lightDir,	// L
 						viewDir,		// V
 						surface.glossiness,
-						surface.specularColor
+						surface.specularColor,
+						fresnel  // output: fresnel term
 					);
-
-					// hack: use tonemapping only for specular term to make burn-out more plausible
-					specular = CalcToneMapReinhard(3.0 * specular);
+					radiance = diffuse * (vec3(1.0) - fresnel) + specular;  // energy conservative
 				}
+				else
+					radiance = diffuse;
 
-				vec3 outputRGB = diffuse * 1.5 + specular;
-				gl_FragColor = vec4(ConvertLinearToSRGB(outputRGB), 1.0);
+				radiance = CalcToneMapUncharted2(radiance * irradianceSun);
+				gl_FragColor = vec4(ConvertLinearToSRGB(radiance), 1.0);
 			}
 		</script>
 
@@ -447,10 +460,10 @@
 
 				const float seaLevel = 0.25;  // greater for lesser land
 				const float snowLevel = 0.6;  // greater for more snow
-				const vec3 land = vec3(0.011, 0.11, 0.0036);  // land color
-				const vec3 mountain = vec3(0.52, 0.47, 0.029);  // mountain color
-				const vec3 ocean = vec3(0.0046, 0.0046, 0.21);  // ocean color
-				const vec3 white = vec3(0.95, 0.95, 0.95);  // snow/cloud color
+				const vec3 land = vec3(0.031, 0.11, 0.005);  // land color
+				const vec3 mountain = vec3(0.47, 0.37, 0.029);  // mountain color
+				const vec3 ocean = vec3(0.0146, 0.0146, 0.22);  // ocean color
+				const vec3 white = vec3(1.0);  // snow/cloud color
 				const vec3 terrainDetailDisplacement = vec3(1.68, 54.38, 3.14);  // a random displacement to fragment position
 				const vec3 cloudDisplacement = vec3(54.38, 3.14, 1.68);  // a random displacement to fragment position
 
@@ -462,22 +475,28 @@
 				// determine land or ocean
 				if (f > seaLevel) {
 					result.albedo = mix(land, mountain, smoothstep(seaLevel, 1.0, f));
-					if (f > snowLevel)
-						result.albedo = mix(result.albedo, white, (f - snowLevel) * 30.0);
 
-					// Highlight at grazing angle is desired to be consistent with other part of Earth.
-					// So we use a tiny value for glossiness that is just slightly larger than 0.
-					result.glossiness = 1e-9;
+					if (f > snowLevel) {
+						result.albedo = mix(result.albedo, white, (f - snowLevel) * 30.0);
+						result.glossiness = 0.5 * min((f - snowLevel) * 30.0, 1.0);
+						result.specularColor = vec3(0.01801);  // water ice
+					}
+					else {
+						// Highlight at grazing angle is desired to be consistent with other part of Earth.
+						// So we use a tiny value for glossiness that is just slightly larger than 0.
+						result.glossiness = 1e-9;
+						result.specularColor = vec3(0.0, 0.01, 0.0);
+					}
 				}
 				else {
 					result.albedo = ocean;
-					result.glossiness = 0.65;
-					result.specularColor = vec3(0.02);  // water. REF: http://seblagarde.wordpress.com/2011/08/17/feeding-a-physical-based-lighting-mode/
+					result.glossiness = 0.6;
+					result.specularColor = vec3(0.02732);  // liquid water
 				}
 
 				// cloud
 				float f2 = FBM((position + cloudDisplacement) / 2.0, 8);
-				f2 = max(0.0, f2);
+				f2 = max(0.0, f2 * 1.5);
 				result.albedo = mix(result.albedo, white, f2);
 				result.glossiness = mix(result.glossiness, 0.5, f2);
 
