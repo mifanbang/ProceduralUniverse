@@ -1,6 +1,6 @@
 #ProceduralUniverse
 
-Realtime Perlin noise-based procedural textures for various celestial objects. Implemented with WebGL and best viewed in Google Chrome web browser.
+Realtime Perlin noise-based procedural textures for various celestial objects. Implemented with WebGL.
 
 A live demo can be found at http://debug.tw/lab/proc_univ/
 
@@ -17,6 +17,7 @@ The code requires WebGL support in your browser. I would recommend Chrome but Fi
 - First you must have a decent graphics processer and a WebGL-enabled browser.
 - Press 0~9 or LEFT/RIGHT key to switch between celestial objects.
 - Use mouse buttons and wheel to control the camera.
+- Press L to switch auto self rotation on and off.
 - Press Z to toggle fps profiler at the top-left corner of the canvas.
 
 #### Copyright

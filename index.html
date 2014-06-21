@@ -848,6 +848,7 @@
 
 				var planetRotator;
 				var defaultIndex = 4;  // Earth by default
+				var autoSelfRotation = true;
 
 				var materialLoader;
 
@@ -1011,9 +1012,14 @@
 						return loadedPercentage;
 					},
 
+					toggleAutoSelfRotation: function () {
+						autoSelfRotation ^= true;
+					},
+
 					renderNextFrameTo: function (param) {
 						var date = new Date();
-						meshPlanet.rotation.y = date.getTime() * 0.0002;
+						if (autoSelfRotation)
+							meshPlanet.rotation.y += 0.003;
 						param.target.render(scene, param.camera);
 					},
 
@@ -1263,6 +1269,7 @@
 					var KEY_RIGHT = 39;
 					var KEY_DOWN = 40;
 					var KEY_Z = 90;
+					var KEY_L = 76;
 
 					if (keyEvent.keyCode == KEY_LEFT)
 						planetRenderer.rotateBackward();
@@ -1274,8 +1281,14 @@
 						statsMeter.domElement.style.visibility = (statsMeter.domElement.style.visibility == "hidden" ? "visible" : "hidden");
 						return false;
 					}
-					else
+					else if (keyEvent.keyCode == KEY_L) {
+						planetRenderer.toggleAutoSelfRotation();
+						return false;
+					}
+					else {
+						console.log("unknown key: " + keyEvent.keyCode);
 						return true;
+					}
 
 					onRotatePlanet();
 					return false;
