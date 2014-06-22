@@ -230,6 +230,7 @@
 		</script>
 
 		<script id="fshader_nonemissive" type="x-shader/x-fragment">
+			// ref: http://filmicgames.com/archives/75
 			vec3 CalcToneMapUncharted2(vec3 hdrColor) {
 				float A = 0.22;  // shoulder strength
 				float B = 0.30;  // linear strength
@@ -495,10 +496,10 @@
 				}
 
 				// cloud
-				float f2 = FBM((position + cloudDisplacement) / 2.0, 8);
-				f2 = max(0.0, f2 * 2.0);
-				result.albedo = mix(result.albedo, white, f2);
-				result.glossiness = mix(result.glossiness, 0.5, f2);
+				float cloudAmount = FBM((position + cloudDisplacement) / 2.0, 8);
+				cloudAmount = max(cloudAmount, 0.0);
+				result.albedo = mix(result.albedo, white * 2.5, cloudAmount);
+				result.glossiness = mix(result.glossiness, 0.5, cloudAmount);
 
 				return result;
 			}
@@ -1097,6 +1098,7 @@
 						var color = new StellarColorSample(Math.random(), Math.random());
 						geometry.colors[i] = new THREE.Vector3(color.r, color.g, color.b);
 					}
+
 					// attributes for star colors
 					var attributes = {
 						vertColor: { type: 'v3', value: geometry.colors }
