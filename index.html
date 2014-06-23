@@ -314,7 +314,7 @@
 		<script id="fshader_noise" type="x-shader/x-fragment">
 			#define MAX_FBM_OCTAVE   8
 
-			uniform sampler2D	t_noisePerm;
+			uniform sampler2D	t_gradients;
 			uniform float		u_radius;
 			uniform vec3		u_lightDir;  // normalized expected
 			varying vec3		v_modelPosition;
@@ -325,7 +325,7 @@
 				return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);  // 6*t^5 - 15*t^4 + 10*t^3
 			}
 
-			vec3 SamplePerm(float x, float y, float z) {
+			vec3 SamplePrecomputedGradient(float x, float y, float z) {
 				float fx = mod(x, 256.0);
 				float fy = mod(y, 256.0);
 
@@ -333,11 +333,11 @@
 				float blockY = floor(z / 16.0) * 256.0;
 				vec2 index = vec2(blockX + fx, blockY + fy) + 0.5;
 
-				return (texture2D(t_noisePerm, index / 4096.0).rgb * 256.0 - 1.0);
+				return (texture2D(t_gradients, index / 4096.0).rgb * 256.0 - 1.0);
 			}
 
 			float Gradient(vec3 index, vec3 delta) {
-				vec3 grad = SamplePerm(index.x, index.y, index.z);
+				vec3 grad = SamplePrecomputedGradient(index.x, index.y, index.z);
 				return dot(grad, delta);
 			}
 
@@ -918,8 +918,10 @@
 						noisePerm[swappedIndex] = tmpVal;
 					}
 
-					// pre-compute the texture for all (x, y, z) where x, y, z are in [0, 256)
-					var noisePerm3D = new Uint8Array(256 * 256 * 256 * 3);
+					// pre-compute the texture of gradients for all (x, y, z) where x, y, and z are in [0, 256).
+					// each gradient is of form (l, m, n) where l, m, and n are all integers in [-1, 1].
+					// however to avoid negative numbers, before the gradient is written to a texel, each component is added by 1.
+					var precompGradient3D = new Uint8Array(256 * 256 * 256 * 3);
 					for (var iz = 0; iz < 256; iz++) {
 						var blockX = (iz & 0x0F);
 						var blockY = iz >> 4;
@@ -932,14 +934,14 @@
 								hashedIndex = ((noisePerm[hashedIndex] + iz) & 0xFF);
 
 								var gradient = evalGradient(noisePerm[hashedIndex]);
-								noisePerm3D[indexBase]   = gradient.x;
-								noisePerm3D[indexBase+1] = gradient.y;
-								noisePerm3D[indexBase+2] = gradient.z;
+								precompGradient3D[indexBase]   = gradient.x;
+								precompGradient3D[indexBase+1] = gradient.y;
+								precompGradient3D[indexBase+2] = gradient.z;
 							}
 						}
 					}
 
-					texture = new THREE.DataTexture(noisePerm3D, 4096, 4096, THREE.RGBFormat);
+					texture = new THREE.DataTexture(precompGradient3D, 4096, 4096, THREE.RGBFormat);
 					texture.unpackAlignment = 1;
 					texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
 					texture.magFilter = texture.minFilter = THREE.NearestFilter;
@@ -949,7 +951,7 @@
 
 				function initUniforms() {
 					uniformsPlanet = {
-						t_noisePerm	: {type: "t", value: texture},
+						t_gradients	: {type: "t", value: texture},
 						u_radius	: {type: "f", value: 25},
 						u_transform : {type: "m4", value: new THREE.Matrix4()},
 						u_lightDir  : {type: "v3", value: new THREE.Vector3(-0.7071067, 0, -0.7071067)}
