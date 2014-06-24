@@ -325,7 +325,21 @@
 				return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);  // 6*t^5 - 15*t^4 + 10*t^3
 			}
 
-			vec3 SamplePrecomputedGradient(float x, float y, float z) {
+			// unpacks a gradient from a single float
+			// The first 2 most significant bits are unused and must be zeros.
+			// e.g. binary(00 11 10 00) -> gradient(1, 0, -1).
+			vec3 UnpackGradient(float packedGrad) {
+				vec3 result;
+				result.x = floor(packedGrad) - 1.0;
+				packedGrad = fract(packedGrad) * 4.0;  // left-shift 2 bits
+				result.y = floor(packedGrad) - 1.0;
+				packedGrad = fract(packedGrad) * 4.0;  // left-shift 2 bits
+				result.z = floor(packedGrad) - 1.0;
+				return result;
+			}
+
+			// The returned mat4 is actually four independent gradients of type vec4.
+			mat4 SamplePrecomputedGradient(float x, float y, float z) {
 				float fx = mod(x, 256.0);
 				float fy = mod(y, 256.0);
 
@@ -333,14 +347,30 @@
 				float blockY = floor(z / 16.0) * 256.0;
 				vec2 index = vec2(blockX + fx, blockY + fy) + 0.5;
 
-				return (texture2D(t_gradients, index / 4096.0).rgb * 256.0 - 1.0);
+				vec4 texel = texture2D(t_gradients, index / 4096.0).rgba * 256.0;
+				texel /= 16.0;  // right-shift 4 bits
+				mat4 result;
+				result[0].xyz = UnpackGradient(texel.x);
+				result[1].xyz = UnpackGradient(texel.y);
+				result[2].xyz = UnpackGradient(texel.z);
+				result[3].xyz = UnpackGradient(texel.w);
+				return result;
 			}
 
-			float Gradient(vec3 index, vec3 delta) {
-				vec3 grad = SamplePrecomputedGradient(index.x, index.y, index.z);
-				return dot(grad, delta);
+			// gets the gradients at index, index+(1,0,0), index+(0,1,0), index+(1,1,0) and respectively calculate
+			// their dot products with delta, delta-(1,0,0), delta-(0,1,0), delta-(1,1,0)
+			// The returned vec4 consists of the four dot products.
+			vec4 DotWithGradients(vec3 index, vec3 delta) {
+				mat4 gradients = SamplePrecomputedGradient(index.x, index.y, index.z);
+				return vec4(
+					dot(gradients[0].xyz, delta),
+					dot(gradients[1].xyz, delta - vec3(1.0, 0.0, 0.0)),
+					dot(gradients[2].xyz, delta - vec3(0.0, 1.0, 0.0)),
+					dot(gradients[3].xyz, delta - vec3(1.0, 1.0, 0.0))
+				);
 			}
 
+			// calculates the Perlin noise at p
 			float PerlinNoise(vec3 p) {
 				p *= 6.0;  // some scaling
 
@@ -348,16 +378,19 @@
 				vec3 delta = fract(p);
 				vec3 index = mod(floor(p), 256.0);
 
-				float w000 = Gradient(index, delta);
-				float w100 = Gradient(index + vec3(1.0, 0.0, 0.0), delta - vec3(1.0, 0.0, 0.0));
-				float w010 = Gradient(index + vec3(0.0, 1.0, 0.0), delta - vec3(0.0, 1.0, 0.0));
-				float w110 = Gradient(index + vec3(1.0, 1.0, 0.0), delta - vec3(1.0, 1.0, 0.0));
-				float w001 = Gradient(index + vec3(0.0, 0.0, 1.0), delta - vec3(0.0, 0.0, 1.0));
-				float w101 = Gradient(index + vec3(1.0, 0.0, 1.0), delta - vec3(1.0, 0.0, 1.0));
-				float w011 = Gradient(index + vec3(0.0, 1.0, 1.0), delta - vec3(0.0, 1.0, 1.0));
-				float w111 = Gradient(index + vec3(1.0, 1.0, 1.0), delta - vec3(1.0, 1.0, 1.0));
+				vec4 gradients = DotWithGradients(index, delta);
+				float w000 = gradients.x;
+				float w100 = gradients.y;
+				float w010 = gradients.z;
+				float w110 = gradients.w;
 
-				// compute trilinear interpolation of weights
+				gradients = DotWithGradients(index+ vec3(0.0, 0.0, 1.0), delta - vec3(0.0, 0.0, 1.0));
+				float w001 = gradients.x;
+				float w101 = gradients.y;
+				float w011 = gradients.z;
+				float w111 = gradients.w;
+
+				// trilinear interpolation
 				float wx = NoiseWeight(delta.x);
 				float wy = NoiseWeight(delta.y);
 				float wz = NoiseWeight(delta.z);
@@ -370,6 +403,7 @@
 				return mix(y0, y1, wz);
 			}
 
+			// simulates fractional Brownian motion
 			float FBM(vec3 v3Point, int nOctave) {
 				float sum = 0.0;
 				float weight = 1.0;
@@ -396,7 +430,7 @@
 				if (f2 >= spotThreshold)
 					f += 6.0 * (f2 - spotThreshold);  // some scaling to emphasize the light intensity
 
-				f *= 1.0 + PerlinNoise(position) / 1.75;  // a very low frequency noise
+				f *= 1.0 + f2 / 1.75;  // a low frequency noise
 				return baseColor + vec3(f, f, f) * 0.75;
 			}
 		</script>
@@ -875,7 +909,7 @@
 				init();
 
 				function init() {
-					initNoisePerm();
+					initPrecompTex();
 					initUniforms();
 					initMaterials();
 					initRotator(surfaceMatMgr.getNumberOfMaterials());
@@ -886,31 +920,53 @@
 					updateMaterial();
 				}
 
-				function evalGradient(noise) {
-					noise &= 0x0F;
-					var u = (noise<8 || noise==12 || noise==13 ? 1 : 2);
-					var v = (noise<4 || noise==12 || noise==13 ? 2 : 3);
-					u = ((noise & 1) ? -u : u);
-					v = ((noise & 2) ? -v : v);
+				// precomputes the texture of gradients for all (x, y, z) where x, y, and z are in [0, 256).
+				// each gradient is of form (l, m, n) where l, m, and n are all integers in [-1, 1].
+				// however to avoid negative numbers, before the gradient is written to a texel, each component is added by 1.
+				function initPrecompTex() {
+					// given (ix, iy, iz), calculates the index to noisePerm[] should be used.
+					function evalPermIndex(ix, iy, iz) {
+						var hashedIndex = ix & 0xFF;
+						hashedIndex = ((noisePerm[hashedIndex] + iy) & 0xFF);
+						hashedIndex = ((noisePerm[hashedIndex] + iz) & 0xFF);
+						return hashedIndex;
+					}
 
-					var vecU = new THREE.Vector3(0, 0, 0);
-					vecU.setComponent(Math.abs(u) - 1, (u > 0 ? 1 : -1));
-					var vecV = new THREE.Vector3(0, 0, 0);
-					vecV.setComponent(Math.abs(v) - 1, (v > 0 ? 1 : -1));
+					// generates a gradient for a given random number.
+					function evalGradient(noise) {
+						noise &= 0x0F;
+						var u = (noise<8 || noise==12 || noise==13 ? 1 : 2);
+						var v = (noise<4 || noise==12 || noise==13 ? 2 : 3);
+						u = ((noise & 1) ? -u : u);
+						v = ((noise & 2) ? -v : v);
+	
+						var vecU = new THREE.Vector3(0, 0, 0);
+						vecU.setComponent(Math.abs(u) - 1, (u > 0 ? 1 : -1));
+						var vecV = new THREE.Vector3(0, 0, 0);
+						vecV.setComponent(Math.abs(v) - 1, (v > 0 ? 1 : -1));
+	
+						vecU.add(vecV);
+						vecU.addScalar(1);  // make negative elements zero
+						return vecU;
+					}
 
-					vecU.add(vecV);
-					vecU.addScalar(1);  // make negative elements positive
-					return vecU;
-				}
+					// given (ix, iy, iz), precomputes the gradient and packs into a byte.
+					// only the 6 least significant bits of the packed number are used.
+					// each 2 of them represents a component of the gradient.
+					// e.g. evalGradient() will return a gradient (0, -1, 1) as (1, 0, 2) and will be packed as binary(00 01 00 10).
+					function evalPackedGradient(ix, iy, iz) {
+						var hashedIndex = evalPermIndex(ix, iy, iz);
+						var gradient = evalGradient(noisePerm[hashedIndex]);
+						return (gradient.x << 4) + (gradient.y << 2) + gradient.z;
+					}
 
-				function initNoisePerm() {
-					// generate the noise permutation of no unique integers
-					// both values within and indices to the array should form a close ring
+					// generate the noise permutation of unique integers.
+					// both values within and indices to the array should form a close ring.
 					var noisePerm = new Uint8Array(256);
 					for (var i = 0; i < 256; i++)
 						noisePerm[i] = i;
 
-					// randomly re-permute the array
+					// randomly re-permute the array.
 					for (var i = 0; i < 256; i++) {
 						var swappedIndex = Math.floor(Math.random() * 256);
 						var tmpVal = noisePerm[i];
@@ -918,31 +974,59 @@
 						noisePerm[swappedIndex] = tmpVal;
 					}
 
-					// pre-compute the texture of gradients for all (x, y, z) where x, y, and z are in [0, 256).
-					// each gradient is of form (l, m, n) where l, m, and n are all integers in [-1, 1].
-					// however to avoid negative numbers, before the gradient is written to a texel, each component is added by 1.
-					var precompGradient3D = new Uint8Array(256 * 256 * 256 * 3);
+					// since WebGL 1.0 doesn't support texture3D, we will map a 3D index onto a 2D plane.
+					// the layout of the 2D texture is like:
+					// +---+ +---+         +---+
+					// |   | |   | ....... |   |
+					// +---+ +---+         +---+
+					// +---+ +---+         +---+
+					// |   | |   | ....... |   |
+					// +---+ +---+         +---+
+					// +---+   .             .
+					// |   |   .             .
+					// +---+   .             .
+					// +---+ +---+         +---+
+					// |   | |   | ....... |   |
+					// +---+ +---+         +---+
+					// each block in the illustration is a sub-image composed of 256x256 texels which represents all data for (x, y) index with a known z.
+					// the blocks group in a 16x16 fashion so all z can be mapped.
+					var precompGradient3D = new Uint8Array(256 * 256 * 256 * 4);
 					for (var iz = 0; iz < 256; iz++) {
 						var blockX = (iz & 0x0F);
 						var blockY = iz >> 4;
 						for (var iy = 0; iy < 256; iy++) {
 							for (var ix = 0; ix < 256; ix++) {
-								var indexBase = ((4095 - blockY * 256 - iy) * 4096 + (blockX * 256 + ix)) * 3;
+								var indexBase = ((4095 - blockY * 256 - iy) * 4096 + (blockX * 256 + ix)) * 4;
 
-								var hashedIndex = ix;
-								hashedIndex = ((noisePerm[hashedIndex] + iy) & 0xFF);
-								hashedIndex = ((noisePerm[hashedIndex] + iz) & 0xFF);
+								// reuse whenever possible
+								if (ix > 0)
+									precompGradient3D[indexBase] = precompGradient3D[indexBase - 3];
+								else if (iy > 0)
+									precompGradient3D[indexBase] = precompGradient3D[indexBase + 256*16*4 + 2];
+								else
+									precompGradient3D[indexBase] = evalPackedGradient(ix, iy, iz);
 
-								var gradient = evalGradient(noisePerm[hashedIndex]);
-								precompGradient3D[indexBase]   = gradient.x;
-								precompGradient3D[indexBase+1] = gradient.y;
-								precompGradient3D[indexBase+2] = gradient.z;
+								// reuse whenever possible at (current + (1, 0, 0))
+								if (iy > 0)
+									precompGradient3D[indexBase+1] = precompGradient3D[indexBase+1 + 256*16*4 + 2];
+								else
+									precompGradient3D[indexBase+1] = evalPackedGradient(ix + 1, iy, iz);
+
+								// reuse whenever possible at (current + (0, 1, 0))
+								if (ix > 0)
+									precompGradient3D[indexBase+2] = precompGradient3D[indexBase+2 - 3]
+								else
+									precompGradient3D[indexBase+2] = evalPackedGradient(ix, iy + 1, iz);
+
+								// impossible to reuse texel at (current + (1, 1, 0)). just calculate.
+								precompGradient3D[indexBase+3] = evalPackedGradient(ix + 1, iy + 1, iz);
 							}
 						}
 					}
 
-					texture = new THREE.DataTexture(precompGradient3D, 4096, 4096, THREE.RGBFormat);
-					texture.unpackAlignment = 1;
+					// feed GPU with the data
+					texture = new THREE.DataTexture(precompGradient3D, 4096, 4096, THREE.RGBAFormat);
+					texture.unpackAlignment = 4;
 					texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
 					texture.magFilter = texture.minFilter = THREE.NearestFilter;
 					texture.generateMipmaps = false;
