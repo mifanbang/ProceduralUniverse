@@ -238,7 +238,7 @@
 				float D = 0.20;  // toe strength
 				float E = 0.02;  // toe numerator
 				float F = 0.30;  // toe denominator
-				return ((hdrColor*(A*hdrColor+C*B)+D*E) / (hdrColor*(A*hdrColor+B)+D*F)) - E / F;
+				return ((hdrColor * (A * hdrColor + C * B) + D * E) / (hdrColor * (A * hdrColor + B) + D * F)) - E / F;
 			}
 
 			vec3 ConvertLinearToSRGB(vec3 linearColor) {
@@ -513,7 +513,7 @@
 				const vec3 displacement = vec3(31.41, 59.26, 50.6);  // a random displacement to fragment position
 				const vec3 land = vec3(0.47, 0.12, 0.013) * 0.9;  // land color
 				const vec3 dark = vec3(0.18, 0.029, 0.0078);  // darker land color
-				const vec3 cloud = vec3(1.0, 1.0, 1.0);  // cloud color
+				const vec3 cloud = vec3(1.0);  // cloud color
 
 				float f = -0.05 + FBM((position + displacement) / 10.0, 8);
 				float amp = 1.6;  // larger for more limited area to blend
@@ -1039,7 +1039,6 @@
 					},
 
 					renderNextFrameTo: function (param) {
-						var date = new Date();
 						if (autoSelfRotation)
 							meshPlanet.rotation.y += 0.003;
 						param.target.render(scene, param.camera);
@@ -1369,8 +1368,6 @@
 			}
 
 			function animate() {
-				requestAnimationFrame(animate);
-
 				renderCanvas.clear();
 				var param = {
 					target: renderCanvas,
@@ -1381,6 +1378,8 @@
 
 				controls.update();
 				statsMeter.update();
+
+				requestAnimationFrame(animate);
 			}
 		</script>
 
