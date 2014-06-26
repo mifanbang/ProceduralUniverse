@@ -321,8 +321,8 @@
 			varying vec3		v_worldPosition;
 			varying vec3		v_worldNormal;
 
-			float NoiseWeight(float t) {
-				return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);  // 6*t^5 - 15*t^4 + 10*t^3
+			vec3 NoiseWeight(vec3 t) {
+				return t * t * t * (t * (t * vec3(6.0) - vec3(15.0)) + vec3(10.0));  // 6*t^5 - 15*t^4 + 10*t^3
 			}
 
 			// unpacks a gradient from a single float
@@ -378,29 +378,15 @@
 				vec3 delta = fract(p);
 				vec3 index = mod(floor(p), 256.0);
 
-				vec4 gradients = DotWithGradients(index, delta);
-				float w000 = gradients.x;
-				float w100 = gradients.y;
-				float w010 = gradients.z;
-				float w110 = gradients.w;
-
-				gradients = DotWithGradients(index+ vec3(0.0, 0.0, 1.0), delta - vec3(0.0, 0.0, 1.0));
-				float w001 = gradients.x;
-				float w101 = gradients.y;
-				float w011 = gradients.z;
-				float w111 = gradients.w;
+				// compute noises at eight neighboring integral coordinates
+				vec4 noises1 = DotWithGradients(index, delta);
+				vec4 noises2 = DotWithGradients(index+ vec3(0.0, 0.0, 1.0), delta - vec3(0.0, 0.0, 1.0));
 
 				// trilinear interpolation
-				float wx = NoiseWeight(delta.x);
-				float wy = NoiseWeight(delta.y);
-				float wz = NoiseWeight(delta.z);
-				float x00 = mix(w000, w100, wx);
-				float x10 = mix(w010, w110, wx);
-				float x01 = mix(w001, w101, wx);
-				float x11 = mix(w011, w111, wx);
-				float y0 = mix(x00, x10, wy);
-				float y1 = mix(x01, x11, wy);
-				return mix(y0, y1, wz);
+				vec3 weights = NoiseWeight(delta);
+				vec4 interNoisesOnXY = mix(noises1, noises2, weights.z);
+				vec2 interNoisesAlongX = mix(interNoisesOnXY.xy, interNoisesOnXY.zw, weights.y);
+				return mix(interNoisesAlongX.x, interNoisesAlongX.y, weights.x);
 			}
 
 			// simulates fractional Brownian motion
