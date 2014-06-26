@@ -1195,7 +1195,7 @@
 				return ({
 					renderNextFrameTo: function (param) {
 						var date = new Date();
-						mesh.rotation.y = date.getTime() * 5e-6;
+						mesh.rotation.z = date.getTime() * 5e-6;
 						param.target.render(scene, param.camera);
 					}
 				});
