@@ -459,8 +459,9 @@
 			LightingResult DrawSurfaceColor(vec3 position) {
 				LightingResult result;
 
-				const float seaLevel = 0.25;  // greater for lesser land
-				const float snowLevel = 0.6;  // greater for more snow
+				const float seaLevel = 0.25;  // greater for smaller land
+				const float snowLevel = 0.6;  // greater for less snow
+				const float cloudAmountOffset = -0.1;  // graater fo more clouds
 				const vec3 land = vec3(0.031, 0.11, 0.005);  // land color
 				const vec3 mountain = vec3(0.47, 0.37, 0.029);  // mountain color
 				const vec3 ocean = vec3(0.0146, 0.0146, 0.20);  // ocean color
@@ -496,7 +497,7 @@
 				}
 
 				// cloud
-				float cloudAmount = FBM((position + cloudDisplacement) / 2.0, 8);
+				float cloudAmount = FBM((position + cloudDisplacement) / 1.6, 8) + cloudAmountOffset;
 				cloudAmount = max(cloudAmount, 0.0);
 				result.albedo = mix(result.albedo, white * 2.5, cloudAmount);
 				result.glossiness = mix(result.glossiness, 0.5, cloudAmount);
