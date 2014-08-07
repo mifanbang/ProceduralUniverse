@@ -245,6 +245,11 @@
 				return pow(linearColor, vec3(0.4545));
 			}
 
+			float GetGrain(vec2 co) {
+				float f = sin(dot(co.xy, vec2(12.9898, 78.233))) * 43758.5453;
+				return fract(f);
+			}
+
 			void main(void) {
 				const float irradianceSun = 3.0;
 
@@ -278,6 +283,7 @@
 
 				radiance = CalcToneMapUncharted2(radiance * irradianceSun);
 				gl_FragColor = vec4(ConvertLinearToSRGB(radiance), 1.0);
+				gl_FragColor.xyz += (GetGrain(gl_FragCoord.xy) - 0.5) / 256.0;  // anti-banding
 			}
 		</script>
 
@@ -287,6 +293,11 @@
 			uniform vec3	u_lightDir;  // normalized expected
 			varying vec3	v_worldPosition;
 			varying vec3	v_worldNormal;
+
+			float GetGrain(vec2 co) {
+				float f = sin(dot(co.xy, vec2(12.9898, 78.233))) * 43758.5453;
+				return fract(f);
+			}
 
 			void main(void) {
 				if (u_enableAtmos >= 0.0) {
@@ -303,6 +314,7 @@
 					brightness = smoothstep(-0.8, 1.0, brightness);
 
 					gl_FragColor.xyz = u_atmosColor * brightness * enhancedThickness;
+					gl_FragColor.xyz += (GetGrain(gl_FragCoord.xy) - 0.5) / 256.0;  // anti-banding
 					gl_FragColor.w = pow(length(gl_FragColor.xyz), 0.5);
 				}
 				else {
