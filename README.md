@@ -20,6 +20,10 @@ The code requires WebGL support in your browser. I would recommend Chrome but Fi
 - Press L to switch auto self rotation on and off.
 - Press Z to toggle fps profiler at the top-left corner of the canvas.
 
+#### Building the Code
+
+Since shaders are composed in fragments, listing and packaging all shader fragments into a single archive is needed for performance consideration. Execute the script *BuildShaderArchive.pl* in the root directory and it will automatically find all files of extension *.shfr* within the directory of *shaders/*. If nothing went wrong, you will find the output file at *js/ShaderArchive.js* as a RequireJS module.
+
 #### Copyright
 
 ProceduralUniverse - A WebGL renderer of procedural textures for various celestial objects.
@@ -31,3 +35,4 @@ This project stands on the shoulders of other great work. They can be found in t
 - stats.js by Mr.doob - http://mrdoob.com
 - TrackBallControls.js by Eberhard Graether - http://egraether.com/
 - Detector.js by alteredq - http://alteredqualia.com/
+- RequireJS by The Dojo Foundation - http://requirejs.org/

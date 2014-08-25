@@ -1,0 +1,31 @@
+// This file is a part of the ProceduralUniverse
+// Copyright (C) 2013-2014  Mifan Bang <http://debug.tw>
+
+
+LightingResult DrawSurfaceColor(vec3 position) {
+	vec3 outputColor;
+
+	const vec3 displacement1 = vec3(689.414, 689.414, 689.414);
+	const vec3 displacement2 = vec3(197.4, 197.4, 197.4);
+	const vec3 base = vec3(0.0094, 0.50, 0.68);  // base color
+	const vec3 bright = vec3(0.099, 0.79, 1.0);  // a brighter color
+	const vec3 dark = vec3(0.060, 0.011, 1.0);  // another dark color
+
+	// base + bright stripes
+	float y = position.y / 3.0;
+	vec3 yPos = vec3(y);
+	float f = 0.1 + fBmOrder8(yPos + displacement1);
+	f = clamp(f * 0.5 + 0.5, 0.0, 0.7);  // rescale to [0, 0.7]
+	outputColor = mix(bright, base, f);
+
+	// stripes of another color, making it more visual variance
+	y = position.y / 5.0;
+	yPos = vec3(y + displacement2);
+	f = -0.7 + fBmOrder4(yPos);
+	f = clamp(f * 0.5 + 0.5, 0.0, 0.5);  // rescale to [0, 0.5]
+	outputColor = mix(outputColor, dark, f);
+
+	LightingResult result;
+	result.albedo = outputColor;
+	return result;
+}

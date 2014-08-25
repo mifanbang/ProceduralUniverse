@@ -1,0 +1,30 @@
+// This file is a part of the ProceduralUniverse
+// Copyright (C) 2013-2014  Mifan Bang <http://debug.tw>
+
+
+LightingResult DrawSurfaceColor(vec3 position) {
+	vec3 outputColor;
+
+	const float cloudAmount = -0.25;  // greater for more and heavier clouds
+	const vec3 displacement = vec3(31.41, 59.26, 50.6);  // a random displacement to fragment position
+	const vec3 land = vec3(0.47, 0.12, 0.013) * 0.9;  // land color
+	const vec3 dark = vec3(0.18, 0.029, 0.0078);  // darker land color
+	const vec3 cloud = vec3(1.0);  // cloud color
+
+	float f = -0.05 + fBmOrder8((position + displacement) / 10.0);
+	float amp = 1.6;  // larger for more limited area to blend
+	outputColor = mix(dark, land, smoothstep(-0.1, 0.1, f * amp));  // lowland for f<-0.1; highland for f>0.1
+
+	// a low frequency noise
+	f = (fBmOrder2(position) - 0.5) / 80.0;
+	outputColor += vec3(f, f, f);
+
+	// cloud
+	float f2 = cloudAmount + fBmOrder8((position * 0.5) / 3.0);
+	f2 = smoothstep(0.0, 1.0, f2 + 0.1);
+	outputColor = mix(outputColor, cloud, f2);
+
+	LightingResult result;
+	result.albedo = outputColor;
+	return result;
+}

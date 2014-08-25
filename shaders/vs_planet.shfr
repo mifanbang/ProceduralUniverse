@@ -1,0 +1,17 @@
+// This file is a part of the ProceduralUniverse
+// Copyright (C) 2013-2014  Mifan Bang <http://debug.tw>
+
+
+uniform float	u_radius;
+uniform mat4	u_transform;		// dynamic transform
+varying vec3	v_modelPosition;	// model-space position
+varying vec3	v_worldPosition;	// world-space position (normalized)
+varying vec3	v_worldNormal;		// world-space normal (normalized)
+
+void main(void) {
+	gl_Position = modelMatrix * u_transform * vec4(position, 1.0);
+	v_worldPosition = gl_Position.xyz / gl_Position.w;
+	gl_Position = projectionMatrix * viewMatrix * gl_Position;
+	v_modelPosition = position / u_radius;
+	v_worldNormal = normalize(modelMatrix * vec4(normal, 0.0)).xyz;
+}

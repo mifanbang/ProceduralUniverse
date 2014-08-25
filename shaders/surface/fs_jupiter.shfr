@@ -1,0 +1,40 @@
+// This file is a part of the ProceduralUniverse
+// Copyright (C) 2013-2014  Mifan Bang <http://debug.tw>
+
+
+LightingResult DrawSurfaceColor(vec3 position) {
+	vec3 outputColor;
+
+	const float spotThreshold = 0.6;  // greater for fewer and smaller spots
+	const vec3 displacement = vec3(81.3, 81.3, 81.3);
+	const vec3 base = vec3(0.79, 0.076, 0.0078);  // base color
+	const vec3 bright = vec3(1.0, 0.61, 0.40);  // a brighter color
+	const vec3 dark = vec3(0.29, 0.16, 0.023);  // another dark color
+	const vec3 spot = vec3(0.61, 0.015, 0.0063);  // big red spot color
+
+	// base + bright stripes
+	float y = position.y / 2.0 + fBmOrder2(position * 5.0) / 175.0;
+	vec3 yPos = vec3(y);
+	float f = fBmOrder4(yPos);
+	f = clamp(f * 0.5 + 0.75, 0.0, 1.0);  // rescale to [0, 1]
+	outputColor = mix(bright, base, f);
+
+	// stripes of another color, making it more visually variant
+	yPos += vec3(displacement);
+	f = fBmOrder4(yPos);
+	f = clamp(f * 0.5 + 0.5, 0.0, 1.0);  // rescale to [0, 1]
+	outputColor = mix(dark, outputColor, f);
+
+	// big red spot(s)
+	float f2 = PerlinNoise(position / 2.0);
+	if (f2 > spotThreshold) {
+		f2 -= spotThreshold;
+		f2 *= 6.0;  // simply amplify
+		f2 = clamp(f2, 0.0, 1.0);
+		outputColor = mix(outputColor, spot, f2);
+	}
+
+	LightingResult result;
+	result.albedo = outputColor;
+	return result;
+}

@@ -1,0 +1,38 @@
+// This file is a part of the ProceduralUniverse
+// Copyright (C) 2013-2014  Mifan Bang <http://debug.tw>
+
+
+uniform float	u_enableAtmos;
+uniform vec3	u_atmosColor;
+uniform vec3	u_lightDir;  // normalized expected
+varying vec3	v_worldPosition;
+varying vec3	v_worldNormal;
+
+
+float GetGrain(vec2 co) {
+	float f = sin(dot(co.xy, vec2(12.9898, 78.233))) * 43758.5453;
+	return fract(f);
+}
+
+void main(void) {
+	if (u_enableAtmos >= 0.0) {
+		vec3 viewDir = normalize(cameraPosition - v_worldPosition);
+		float thickness = clamp(1.0 - dot(viewDir, v_worldNormal), 0.0, 1.0);
+		float enhancedThickness;
+		float threshold = 0.85;
+		if (thickness > threshold)
+			thickness = threshold - smoothstep(0.0, threshold, (thickness - threshold) / (1.0 - threshold));  // smooth near the edge
+		enhancedThickness = pow(max(thickness, 0.0), 3.0);
+
+		// scattering effect
+		float brightness = dot(v_worldNormal, -u_lightDir);  // diffusive base brightness
+		brightness = smoothstep(-0.8, 1.0, brightness);
+
+		gl_FragColor.xyz = u_atmosColor * brightness * enhancedThickness;
+		gl_FragColor.xyz += (GetGrain(gl_FragCoord.xy) - 0.5) / 256.0;  // anti-banding
+		gl_FragColor.w = pow(length(gl_FragColor.xyz), 0.5);
+	}
+	else {
+		discard;
+	}
+}

@@ -1,0 +1,9 @@
+// This file is a part of the ProceduralUniverse
+// Copyright (C) 2013-2014  Mifan Bang <http://debug.tw>
+
+
+void main(void) {
+	vec3 outputRGB = DrawSurfaceColor(v_modelPosition);
+	outputRGB = pow(outputRGB, vec3(0.4545));  // convert from linear to sRGB
+	gl_FragColor = vec4(outputRGB, 1.0);
+}

@@ -1,0 +1,51 @@
+// This file is a part of the ProceduralUniverse
+// Copyright (C) 2013-2014  Mifan Bang <http://debug.tw>
+
+
+struct LightingResult {
+	vec3	albedo;
+	float	glossiness;
+	vec3	specularColor;
+};
+
+
+vec3 CalcLommelSeeliger(vec3 albedo, vec3 normal, vec3 light, vec3 view) {
+	float uIncident = max(dot(light, normal), 0.0);
+	float uReflective = max(dot(view, normal), 0.0);
+	return albedo * uIncident / (uIncident + uReflective);
+}
+
+vec3 CalcFresnelSchlick(vec3 specularColor, vec3 L, vec3 H) {
+	// using mix() to rewrite Schlick's approximation
+	vec3 white = vec3(1.0);
+	vec3 blendingOpponent = vec3(pow(1.0 - max(dot(L, H), 0.0), 5.0));
+	return mix(blendingOpponent, white, specularColor);
+}
+
+float CalcDistributionBlinn(float sharpness, float dotNH) {
+	const float twoPI = 2.0 * 3.1415926;
+	return (sharpness + 2.0) / twoPI * pow(max(dotNH, 0.0), sharpness);
+}
+
+float CalcGeomAntCookTorrance(float dotNH_2, float dotNV, float dotNL, float dotVH_inv) {
+	float g1 = (dotNH_2 * dotNV) * dotVH_inv;
+	float g2 = (dotNH_2 * dotNL) * dotVH_inv;
+	return min(1.0, min(g1, g2));
+}
+
+vec3 CalcTorranceSparrow(vec3 N, vec3 L, vec3 V, float glossiness, vec3 specColor, out vec3 fresnel) {
+	vec3 H = normalize(V + L);
+	float specularPower = exp2(10.0 * glossiness + 1.0);
+	float dotNL = dot(N, L);
+	float dotNV = dot(N, V);
+	float dotNH = dot(N, H);
+	float dotVH = dot(V, H);
+
+	fresnel = CalcFresnelSchlick(specColor, L, H);
+	vec3 radiance = fresnel
+		* CalcGeomAntCookTorrance(2.0 * dotNH, dotNV, dotNL, 1.0 / dotVH)
+		* CalcDistributionBlinn(specularPower, dotNH)
+		/ (dotNV * 4.0);  // dotNL is cancelled out in the denominator
+
+	return max(radiance, vec3(0.0));
+}

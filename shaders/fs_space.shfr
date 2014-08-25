@@ -1,0 +1,10 @@
+// This file is a part of the ProceduralUniverse
+// Copyright (C) 2013-2014  Mifan Bang <http://debug.tw>
+
+
+varying vec3	v_color;
+
+void main(void) {
+	vec3 outputRGB = v_color;
+	gl_FragColor = vec4(outputRGB, 1.0);
+}

@@ -1,0 +1,20 @@
+// This file is a part of the ProceduralUniverse
+// Copyright (C) 2013-2014  Mifan Bang <http://debug.tw>
+
+
+LightingResult DrawSurfaceColor(vec3 position) {
+	const float brightness = 0.05;  // greater for a brighter planet
+	const vec3 displacement = vec3(54.38, 3.14, 1.68);  // a random displacement to fragment position
+
+	float f = fBmOrder8(position) / 4.0;
+	float f2 = fBmOrder4(position * 3.0 + displacement);
+	float f3 = fBmOrder4(position + displacement) / 6.0;
+	f = max(f, 0.0);
+	f2 = max(f2, 0.0);
+	f3 = max(f3, 0.0);
+	f = brightness + (f + 0.1) * (f2 + 0.2) + f3;
+
+	LightingResult result;
+	result.albedo = vec3(f, f, f);
+	return result;
+}

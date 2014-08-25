@@ -1,0 +1,19 @@
+// This file is a part of the ProceduralUniverse
+// Copyright (C) 2013-2014  Mifan Bang <http://debug.tw>
+
+
+attribute vec3	vertColor;
+uniform float	u_radius;
+uniform float	u_pointSize;
+varying vec3	v_color;
+
+void main(void) {
+	v_color = vertColor;
+
+	float phi = position.x;
+	float theta = position.y;
+	vec3 worldPos = u_radius * vec3(sin(theta) * cos(phi), sin(theta) * sin(phi), cos(theta));
+	gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(worldPos, 1.0);
+	gl_Position.z = 1.0;  // fixed depth to avoid being clipped
+	gl_PointSize = u_pointSize;
+}

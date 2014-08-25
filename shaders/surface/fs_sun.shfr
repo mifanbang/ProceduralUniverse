@@ -1,0 +1,17 @@
+// This file is a part of the ProceduralUniverse
+// Copyright (C) 2013-2014  Mifan Bang <http://debug.tw>
+
+
+vec3 DrawSurfaceColor(vec3 position) {
+	const float brightness = 0.1;  // greater for a brighter sun
+	const float spotThreshold = 0.60;  // greater for fewer and smaller light spots
+	const vec3 baseColor = vec3(0.75, 0.17, 0.0);
+	
+	float f = brightness + PerlinNoise(12.0 * position) / 3.0;  // base
+	float f2 = PerlinNoise(position);  // highly active areas (light spots)
+	if (f2 >= spotThreshold)
+		f += 6.0 * (f2 - spotThreshold);  // some scaling to emphasize the light intensity
+
+	f *= 1.0 + PerlinNoise(position) / 1.75;  // a very low frequency noise
+	return baseColor + vec3(f, f, f) * 0.75;
+}
