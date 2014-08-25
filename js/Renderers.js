@@ -301,7 +301,7 @@ function SpaceRenderer() {
 			depthWrite: false
 		});
 
-		mesh = new THREE.ParticleSystem(geometry, shaderMar);
+		mesh = new THREE.PointCloud(geometry, shaderMar);
 		mesh.rotation.x = -0.3;
 	}
 

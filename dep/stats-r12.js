@@ -78,18 +78,18 @@ var Stats = function () {
 				break;
 		}
 
-	}
+	};
 
 	var updateGraph = function ( dom, value ) {
 
 		var child = dom.appendChild( dom.firstChild );
 		child.style.height = value + 'px';
 
-	}
+	};
 
 	return {
 
-		REVISION: 11,
+		REVISION: 12,
 
 		domElement: container,
 
@@ -141,3 +141,9 @@ var Stats = function () {
 	}
 
 };
+
+if ( typeof module === 'object' ) {
+
+	module.exports = Stats;
+
+}

@@ -71,7 +71,7 @@ function MaterialLoader() {
 	var camera = new THREE.PerspectiveCamera(45, 1, 1, 1);
 	var geometry = new THREE.Geometry();
 	geometry.vertices.push(new THREE.Vector3(0, 0, 1000)); // a point far behind the default camera position
-	var mesh = new THREE.ParticleSystem(geometry);
+	var mesh = new THREE.PointCloud(geometry);
 	var scene = new THREE.Scene();
 	scene.add(mesh);
 
