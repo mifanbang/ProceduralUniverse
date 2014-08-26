@@ -84,7 +84,6 @@ function MaterialLoader() {
 			}
 			else {
 				mesh.material = param.material;
-
 				param.target.render(scene, camera);
 			}
 		}

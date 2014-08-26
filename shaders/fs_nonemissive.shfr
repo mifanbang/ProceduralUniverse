@@ -2,6 +2,9 @@
 // Copyright (C) 2013-2014  Mifan Bang <http://debug.tw>
 
 
+uniform vec2	u_random;
+
+
 // ref: http://filmicgames.com/archives/75
 vec3 CalcToneMapUncharted2(vec3 hdrColor) {
 	float A = 0.22;  // shoulder strength
@@ -55,5 +58,5 @@ void main(void) {
 
 	radiance = CalcToneMapUncharted2(radiance * irradianceSun);
 	gl_FragColor = vec4(ConvertLinearToSRGB(radiance), 1.0);
-	gl_FragColor.xyz += (GetGrain(gl_FragCoord.xy) - 0.5) / 256.0;  // anti-banding
+	gl_FragColor.xyz += (GetGrain(gl_FragCoord.xy + u_random) - 0.5) / 256.0;  // anti-banding
 }

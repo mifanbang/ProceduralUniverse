@@ -137,13 +137,15 @@ function PlanetRenderer(param) {
 			t_gradients	: {type: "t", value: texture},
 			u_radius	: {type: "f", value: 25},
 			u_transform : {type: "m4", value: new THREE.Matrix4()},
-			u_lightDir  : {type: "v3", value: new THREE.Vector3(-0.7071067, 0, -0.7071067)}
+			u_lightDir	: {type: "v3", value: new THREE.Vector3(-0.7071067, 0, -0.7071067)},
+			u_random	: {type: "v2", value: new THREE.Vector2(0, 0)}
 		};
 		uniformsAtmos = {
-			u_enableAtmos : {type: "f", value: 0},
-			u_atmosColor  : {type: "v3", value: new THREE.Vector3(0, 0, 0)},
-			u_transform   : {type: "m4", value: new THREE.Matrix4()},
-			u_lightDir    : {type: "v3", value: new THREE.Vector3(-0.7071067, 0, -0.7071067)}
+			u_enableAtmos	: {type: "f", value: 0},
+			u_atmosColor	: {type: "v3", value: new THREE.Vector3(0, 0, 0)},
+			u_transform		: {type: "m4", value: new THREE.Matrix4()},
+			u_lightDir		: {type: "v3", value: new THREE.Vector3(-0.7071067, 0, -0.7071067)},
+			u_random		: {type: "v2", value: new THREE.Vector2(0, 0)}
 		};
 	}
 
@@ -224,6 +226,10 @@ function PlanetRenderer(param) {
 		renderNextFrameTo: function (param) {
 			if (autoSelfRotation)
 				meshPlanet.rotation.y += 0.003;
+
+			meshPlanet.material.uniforms.u_random.value.set(Math.random(), Math.random());
+			meshAtmos.material.uniforms.u_random.value.set(Math.random(), Math.random());
+
 			param.target.render(scene, param.camera);
 		},
 

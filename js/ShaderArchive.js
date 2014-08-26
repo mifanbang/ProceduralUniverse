@@ -7,6 +7,7 @@ define({
 	uniform float	u_enableAtmos; \n \
 	uniform vec3	u_atmosColor; \n \
 	uniform vec3	u_lightDir; \n \
+	uniform vec2	u_random; \n \
 	varying vec3	v_worldPosition; \n \
 	varying vec3	v_worldNormal; \n \
 	float GetGrain(vec2 co) { \n \
@@ -25,7 +26,7 @@ define({
 			float brightness = dot(v_worldNormal, -u_lightDir); \n \
 			brightness = smoothstep(-0.8, 1.0, brightness); \n \
 			gl_FragColor.xyz = u_atmosColor * brightness * enhancedThickness; \n \
-			gl_FragColor.xyz += (GetGrain(gl_FragCoord.xy) - 0.5) / 256.0; \n \
+			gl_FragColor.xyz += (GetGrain(gl_FragCoord.xy + u_random) - 0.5) / 256.0; \n \
 			gl_FragColor.w = pow(length(gl_FragColor.xyz), 0.5); \n \
 		} \n \
 		else { \n \
@@ -147,6 +148,7 @@ define({
 	} \n \
 ',
 'fs_nonemissive' : ' \
+	uniform vec2	u_random; \n \
 	vec3 CalcToneMapUncharted2(vec3 hdrColor) { \n \
 		float A = 0.22; \n \
 		float B = 0.30; \n \
@@ -190,7 +192,7 @@ define({
 			radiance = diffuse; \n \
 		radiance = CalcToneMapUncharted2(radiance * irradianceSun); \n \
 		gl_FragColor = vec4(ConvertLinearToSRGB(radiance), 1.0); \n \
-		gl_FragColor.xyz += (GetGrain(gl_FragCoord.xy) - 0.5) / 256.0; \n \
+		gl_FragColor.xyz += (GetGrain(gl_FragCoord.xy + u_random) - 0.5) / 256.0; \n \
 	} \n \
 ',
 'fs_space' : ' \

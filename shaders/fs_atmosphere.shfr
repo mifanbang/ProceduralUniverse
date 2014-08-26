@@ -5,6 +5,7 @@
 uniform float	u_enableAtmos;
 uniform vec3	u_atmosColor;
 uniform vec3	u_lightDir;  // normalized expected
+uniform vec2	u_random;
 varying vec3	v_worldPosition;
 varying vec3	v_worldNormal;
 
@@ -29,7 +30,7 @@ void main(void) {
 		brightness = smoothstep(-0.8, 1.0, brightness);
 
 		gl_FragColor.xyz = u_atmosColor * brightness * enhancedThickness;
-		gl_FragColor.xyz += (GetGrain(gl_FragCoord.xy) - 0.5) / 256.0;  // anti-banding
+		gl_FragColor.xyz += (GetGrain(gl_FragCoord.xy + u_random) - 0.5) / 256.0;  // anti-banding
 		gl_FragColor.w = pow(length(gl_FragColor.xyz), 0.5);
 	}
 	else {
