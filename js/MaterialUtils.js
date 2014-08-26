@@ -67,10 +67,12 @@ function MaterialManager(param) {
 	});
 }
 
+
+// hack to fore browser to compile shaders and cache them
 function MaterialLoader() {
 	var camera = new THREE.PerspectiveCamera(45, 1, 1, 1);
 	var geometry = new THREE.Geometry();
-	geometry.vertices.push(new THREE.Vector3(0, 0, 1000)); // a point far behind the default camera position
+	geometry.vertices.push(new THREE.Vector3(0, 0, -1000));  // this point must not be culled
 	var mesh = new THREE.PointCloud(geometry);
 	var scene = new THREE.Scene();
 	scene.add(mesh);
@@ -82,6 +84,7 @@ function MaterialLoader() {
 			}
 			else {
 				mesh.material = param.material;
+
 				param.target.render(scene, camera);
 			}
 		}
